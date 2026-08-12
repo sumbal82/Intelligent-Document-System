@@ -27,19 +27,26 @@ st.write(
 # SESSION STATE
 # ============================================================
 
-defaults = {
-    "processed": False,
-    "text": "",
-    "detections": [],
-    "image_path": "",
-    "detection_image": None,
-    "chat_history": [],
-    "uploaded_file_id": None,
-}
+if "processed" not in st.session_state:
+    st.session_state.processed = False
 
-for key, value in defaults.items():
-    if key not in st.session_state:
-        st.session_state[key] = value
+if "text" not in st.session_state:
+    st.session_state.text = ""
+
+if "detections" not in st.session_state:
+    st.session_state.detections = []
+
+if "image_path" not in st.session_state:
+    st.session_state.image_path = ""
+
+if "detection_image" not in st.session_state:
+    st.session_state.detection_image = None
+
+if "chat_history" not in st.session_state:
+    st.session_state.chat_history = []
+
+if "uploaded_name" not in st.session_state:
+    st.session_state.uploaded_name = ""
 
 
 # ============================================================
@@ -55,24 +62,17 @@ uploaded_file = st.file_uploader(
 
 
 # ============================================================
-# RESET WHEN A NEW IMAGE IS UPLOADED
+# HANDLE NEW IMAGE
 # ============================================================
 
 if uploaded_file is not None:
 
-    # Create a unique ID for the uploaded file
-    current_file_id = (
-        f"{uploaded_file.name}_"
-        f"{uploaded_file.size}"
-    )
+    # Detect a NEW uploaded image
+    if uploaded_file.name != st.session_state.uploaded_name:
 
-    # Detect NEW image
-    if (
-        st.session_state.uploaded_file_id
-        != current_file_id
-    ):
+        st.session_state.uploaded_name = uploaded_file.name
 
-        # Reset all previous results
+        # Reset everything from previous image
         st.session_state.processed = False
         st.session_state.text = ""
         st.session_state.detections = []
@@ -80,48 +80,36 @@ if uploaded_file is not None:
         st.session_state.detection_image = None
         st.session_state.chat_history = []
 
-        # Save new file ID
-        st.session_state.uploaded_file_id = (
-            current_file_id
+        # Create input directory
+        os.makedirs("input", exist_ok=True)
+
+        # File extension
+        extension = os.path.splitext(
+            uploaded_file.name
+        )[1].lower()
+
+        if extension not in [".jpg", ".jpeg", ".png"]:
+            extension = ".jpg"
+
+        # Give every upload a unique filename
+        image_path = os.path.join(
+            "input",
+            "uploaded_image" + extension
         )
 
+        # Save uploaded image
+        with open(image_path, "wb") as file:
+            file.write(uploaded_file.getbuffer())
 
-    # ========================================================
-    # SAVE IMAGE
-    # ========================================================
+        st.session_state.image_path = image_path
 
-    os.makedirs("input", exist_ok=True)
+    else:
 
-    extension = os.path.splitext(
-        uploaded_file.name
-    )[1].lower()
-
-    if extension not in [
-        ".jpg",
-        ".jpeg",
-        ".png"
-    ]:
-        extension = ".jpg"
-
-    image_path = os.path.join(
-        "input",
-        "test" + extension
-    )
-
-    with open(
-        image_path,
-        "wb"
-    ) as file:
-
-        file.write(
-            uploaded_file.getbuffer()
-        )
-
-    st.session_state.image_path = image_path
+        image_path = st.session_state.image_path
 
 
     # ========================================================
-    # DISPLAY IMAGE
+    # DISPLAY UPLOADED IMAGE
     # ========================================================
 
     uploaded_file.seek(0)
@@ -132,9 +120,7 @@ if uploaded_file is not None:
         width="stretch"
     )
 
-    st.success(
-        "✅ Image uploaded successfully"
-    )
+    st.success("✅ Image uploaded successfully")
 
 
     # ========================================================
@@ -146,7 +132,6 @@ if uploaded_file is not None:
         width="stretch"
     ):
 
-        # Reset results before processing
         st.session_state.processed = False
         st.session_state.text = ""
         st.session_state.detections = []
@@ -160,23 +145,19 @@ if uploaded_file is not None:
 
         try:
 
-            from preprocessing import (
-                preprocess_image
-            )
+            from preprocessing import preprocess_image
 
             with st.spinner(
                 "🔄 Preprocessing image..."
             ):
 
-                processed_image = (
-                    preprocess_image(
-                        image_path
-                    )
+                processed_image = preprocess_image(
+                    image_path
                 )
 
                 processed_path = os.path.join(
                     "input",
-                    "preprocessed_test.jpg"
+                    "preprocessed_image.jpg"
                 )
 
                 processed_image.save(
@@ -233,10 +214,8 @@ if uploaded_file is not None:
                     image
                 )
 
-                extracted_text = (
-                    extract_text(
-                        pil_image
-                    )
+                extracted_text = extract_text(
+                    pil_image
                 )
 
             if extracted_text is None:
@@ -277,32 +256,26 @@ if uploaded_file is not None:
 
         try:
 
-            from detection import (
-                detect_objects
-            )
+            from detection import detect_objects
 
             with st.spinner(
                 "🔍 Detecting objects using YOLO..."
             ):
 
-                detections, annotated_image = (
-                    detect_objects(
-                        image_path
-                    )
+                detections, annotated_image = detect_objects(
+                    image_path
                 )
 
             if detections is None:
                 detections = []
 
-            st.session_state.detections = (
-                detections
-            )
+            st.session_state.detections = detections
 
             if annotated_image is not None:
 
                 output_path = os.path.join(
                     "input",
-                    "detected_test.jpg"
+                    "detected_image.jpg"
                 )
 
                 cv2.imwrite(
@@ -381,9 +354,11 @@ if st.session_state.processed:
 
         for obj in st.session_state.detections:
 
-            name = obj.get(
-                "class",
-                "Unknown"
+            name = str(
+                obj.get(
+                    "class",
+                    "Unknown"
+                )
             )
 
             confidence = obj.get(
@@ -411,7 +386,7 @@ if st.session_state.processed:
 
 
     # ========================================================
-    # YOLO IMAGE
+    # YOLO RESULT IMAGE
     # ========================================================
 
     if st.session_state.detection_image:
@@ -474,7 +449,7 @@ if st.session_state.processed:
 
         question = st.text_input(
             "Ask anything about this image:",
-            placeholder="Type any question..."
+            placeholder="Example: What is shown in this image?"
         )
 
         ask_button = st.form_submit_button(
@@ -502,6 +477,8 @@ if st.session_state.processed:
             try:
 
                 q = question.lower().strip()
+
+                answer = None
 
 
                 # =================================================
@@ -569,9 +546,7 @@ if st.session_state.processed:
 
                         names = []
 
-                        for obj in (
-                            st.session_state.detections
-                        ):
+                        for obj in st.session_state.detections:
 
                             name = str(
                                 obj.get(
@@ -614,7 +589,7 @@ if st.session_state.processed:
 
 
                 # =================================================
-                # TEXT CHECK
+                # TEXT EXISTENCE
                 # =================================================
 
                 elif (
@@ -639,7 +614,7 @@ if st.session_state.processed:
 
 
                 # =================================================
-                # GENERAL IMAGE QUESTIONS
+                # GENERAL IMAGE QUESTION
                 # =================================================
 
                 else:
@@ -667,7 +642,11 @@ if st.session_state.processed:
                 # =================================================
 
                 if answer is None:
-                    answer = ""
+
+                    answer = (
+                        "I could not determine a "
+                        "reliable answer from the image."
+                    )
 
                 answer = str(
                     answer
@@ -676,8 +655,8 @@ if st.session_state.processed:
                 if not answer:
 
                     answer = (
-                        "I could not determine the answer "
-                        "from the uploaded image."
+                        "I could not determine a "
+                        "reliable answer from the image."
                     )
 
 
