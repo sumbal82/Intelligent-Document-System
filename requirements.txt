@@ -1,7 +1,7 @@
 streamlit==1.61.1
-opencv-python-headless==4.12.0.88
+opencv-python-headless==4.10.0.84
 numpy==1.26.4
-Pillow==12.3.0
+Pillow==11.3.0
 easyocr==1.7.2
 ultralytics==8.4.118
 transformers==5.14.1
