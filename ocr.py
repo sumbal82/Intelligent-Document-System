@@ -1,40 +1,38 @@
+import streamlit as st
 import easyocr
 import numpy as np
 import cv2
 from PIL import Image
 
+
 # ============================================================
-# EASY OCR MODEL - LAZY LOADING
+# LOAD EASY OCR ONLY ONCE
 # ============================================================
 
-reader = None
+@st.cache_resource
+def load_ocr():
+
+    return easyocr.Reader(
+        ['en'],
+        gpu=False,
+        verbose=False
+    )
 
 
-def get_reader():
-    global reader
-
-    if reader is None:
-        reader = easyocr.Reader(
-            ["en"],
-            gpu=False,
-            verbose=False
-        )
-
-    return reader
+reader = load_ocr()
 
 
 # ============================================================
-# IMAGE PREPROCESSING FOR OCR
+# IMAGE PREPROCESSING
 # ============================================================
 
 def prepare_image(image):
-    """
-    Prepare image to improve OCR readability.
-    """
 
-    # PIL Image -> NumPy
     if isinstance(image, Image.Image):
-        image = np.array(image)
+        image = np.array(image.convert("RGB"))
+
+    if not isinstance(image, np.ndarray):
+        raise ValueError("Invalid image format.")
 
     # RGB -> BGR
     if len(image.shape) == 3:
@@ -51,19 +49,22 @@ def prepare_image(image):
         cv2.COLOR_BGR2GRAY
     )
 
-    # Upscale smaller images
+    # Upscale only small images
     height, width = gray.shape
 
-    if width < 1600:
+    if width < 1200:
+
+        scale = 2
+
         gray = cv2.resize(
             gray,
             None,
-            fx=2,
-            fy=2,
+            fx=scale,
+            fy=scale,
             interpolation=cv2.INTER_CUBIC
         )
 
-    # Improve contrast
+    # Contrast enhancement
     clahe = cv2.createCLAHE(
         clipLimit=2.0,
         tileGridSize=(8, 8)
@@ -71,14 +72,14 @@ def prepare_image(image):
 
     enhanced = clahe.apply(gray)
 
-    # Small noise reduction
+    # Light noise reduction
     enhanced = cv2.GaussianBlur(
         enhanced,
         (3, 3),
         0
     )
 
-    # Grayscale -> RGB
+    # Back to RGB
     enhanced = cv2.cvtColor(
         enhanced,
         cv2.COLOR_GRAY2RGB
@@ -88,7 +89,7 @@ def prepare_image(image):
 
 
 # ============================================================
-# OCR TEXT EXTRACTION
+# OCR
 # ============================================================
 
 def extract_text(image):
@@ -96,13 +97,7 @@ def extract_text(image):
     try:
 
         # ----------------------------------------------------
-        # Load EasyOCR only when OCR is actually needed
-        # ----------------------------------------------------
-
-        reader_model = get_reader()
-
-        # ----------------------------------------------------
-        # Convert input image
+        # Convert image
         # ----------------------------------------------------
 
         if isinstance(image, Image.Image):
@@ -121,76 +116,94 @@ def extract_text(image):
                 "Unsupported image format."
             )
 
+
         # ----------------------------------------------------
-        # Prepare enhanced image
+        # PREPARE IMAGE
         # ----------------------------------------------------
 
         enhanced = prepare_image(
             original
         )
 
+
         # ----------------------------------------------------
-        # OCR original image
+        # OCR ORIGINAL IMAGE
         # ----------------------------------------------------
 
-        original_results = reader_model.readtext(
+        original_results = reader.readtext(
             original,
             detail=1,
             paragraph=False,
             text_threshold=0.6,
             low_text=0.3,
             link_threshold=0.4,
-            mag_ratio=1.5
+            mag_ratio=1.2
         )
 
+
         # ----------------------------------------------------
-        # OCR enhanced image
+        # OCR ENHANCED IMAGE
         # ----------------------------------------------------
 
-        enhanced_results = reader_model.readtext(
+        enhanced_results = reader.readtext(
             enhanced,
             detail=1,
             paragraph=False,
             text_threshold=0.6,
             low_text=0.3,
             link_threshold=0.4,
-            mag_ratio=1.5
+            mag_ratio=1.2
         )
 
+
         # ----------------------------------------------------
-        # Collect results
+        # COLLECT RESULTS
         # ----------------------------------------------------
 
         texts = []
 
-        for result in original_results + enhanced_results:
+        for result in (
+            original_results +
+            enhanced_results
+        ):
 
-            if len(result) >= 3:
+            if len(result) < 3:
+                continue
 
-                detected_text = str(
-                    result[1]
-                ).strip()
+            detected_text = str(
+                result[1]
+            ).strip()
+
+            try:
 
                 confidence = float(
                     result[2]
                 )
 
-                if (
-                    detected_text
-                    and confidence >= 0.35
-                ):
-                    texts.append(
-                        (
-                            detected_text,
-                            confidence
-                        )
+            except Exception:
+
+                confidence = 0.0
+
+
+            if (
+                detected_text
+                and confidence >= 0.40
+            ):
+
+                texts.append(
+                    (
+                        detected_text,
+                        confidence
                     )
+                )
+
 
         # ----------------------------------------------------
-        # Remove duplicates
+        # REMOVE DUPLICATES
         # ----------------------------------------------------
 
         final_text = []
+
         seen = set()
 
         for text, confidence in texts:
@@ -205,13 +218,15 @@ def extract_text(image):
                     text
                 )
 
+
         # ----------------------------------------------------
-        # Final text
+        # FINAL TEXT
         # ----------------------------------------------------
 
         return "\n".join(
             final_text
         ).strip()
+
 
     except Exception as e:
 
