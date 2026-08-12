@@ -1,16 +1,15 @@
-import os
-import tempfile
-
 import streamlit as st
 import cv2
 import numpy as np
+import tempfile
+import os
+
 from PIL import Image
 
 from preprocessing import preprocess_image
 from ocr import extract_text
 from detection import detect_objects
-from chatbot import answer_from_text
-from vqa import answer_question as vqa_answer
+from vqa import answer_question
 
 
 # ============================================================
@@ -24,9 +23,9 @@ st.set_page_config(
 )
 
 st.title("📄 Intelligent Document System")
-
 st.write(
-    "Upload → Preprocessing → OCR → YOLO → Question Answering"
+    "Upload an image → Preprocess → Extract Text → "
+    "Detect Objects → Ask Questions"
 )
 
 
@@ -34,34 +33,30 @@ st.write(
 # SESSION STATE
 # ============================================================
 
-if "image_id" not in st.session_state:
-    st.session_state.image_id = None
+defaults = {
+    "image_id": None,
+    "original_image": None,
+    "processed_image": None,
+    "ocr_text": "",
+    "detections": [],
+    "annotated_image": None,
+    "processed": False
+}
 
-if "original_image" not in st.session_state:
-    st.session_state.original_image = None
+for key, value in defaults.items():
 
-if "processed_image" not in st.session_state:
-    st.session_state.processed_image = None
-
-if "ocr_text" not in st.session_state:
-    st.session_state.ocr_text = ""
-
-if "detections" not in st.session_state:
-    st.session_state.detections = []
-
-if "annotated_image" not in st.session_state:
-    st.session_state.annotated_image = None
-
-if "chat_history" not in st.session_state:
-    st.session_state.chat_history = []
+    if key not in st.session_state:
+        st.session_state[key] = value
 
 
 # ============================================================
-# IMAGE UPLOAD
+# STEP 1 — UPLOAD
 # ============================================================
+
+st.header("📤 Step 1 — Upload Image")
 
 uploaded_file = st.file_uploader(
-    "📤 Upload Document/Image",
+    "Choose an image",
     type=[
         "jpg",
         "jpeg",
@@ -78,34 +73,52 @@ uploaded_file = st.file_uploader(
 
 if uploaded_file is not None:
 
-    try:
+    file_bytes = uploaded_file.getvalue()
 
-        file_bytes = uploaded_file.getvalue()
+    current_id = (
+        uploaded_file.name,
+        len(file_bytes),
+        hash(file_bytes)
+    )
 
-        current_id = (
-            uploaded_file.name,
-            len(file_bytes),
-            hash(file_bytes)
-        )
+    # --------------------------------------------------------
+    # New image
+    # --------------------------------------------------------
 
-        # ====================================================
-        # NEW IMAGE
-        # ====================================================
+    if current_id != st.session_state.image_id:
 
-        if current_id != st.session_state.image_id:
+        # Clear old data
 
-            # Clear previous image context
-            st.session_state.image_id = current_id
-            st.session_state.original_image = None
-            st.session_state.processed_image = None
-            st.session_state.ocr_text = ""
-            st.session_state.detections = []
-            st.session_state.annotated_image = None
-            st.session_state.chat_history = []
+        st.session_state.image_id = current_id
+        st.session_state.original_image = None
+        st.session_state.processed_image = None
+        st.session_state.ocr_text = ""
+        st.session_state.detections = []
+        st.session_state.annotated_image = None
+        st.session_state.processed = False
 
-            # =================================================
-            # READ IMAGE
-            # =================================================
+        try:
+
+            # ------------------------------------------------
+            # Save uploaded image temporarily
+            # ------------------------------------------------
+
+            suffix = os.path.splitext(
+                uploaded_file.name
+            )[1]
+
+            with tempfile.NamedTemporaryFile(
+                delete=False,
+                suffix=suffix
+            ) as temp_file:
+
+                temp_file.write(file_bytes)
+                temp_path = temp_file.name
+
+
+            # ------------------------------------------------
+            # Read image
+            # ------------------------------------------------
 
             image_array = np.frombuffer(
                 file_bytes,
@@ -120,93 +133,129 @@ if uploaded_file is not None:
             if image_bgr is None:
 
                 st.error(
-                    "❌ Could not read this image."
+                    "❌ Could not read the uploaded image."
                 )
 
                 st.stop()
 
-            # Original RGB image
-            original_rgb = cv2.cvtColor(
+
+            # =================================================
+            # ORIGINAL IMAGE
+            # =================================================
+
+            image_rgb = cv2.cvtColor(
                 image_bgr,
                 cv2.COLOR_BGR2RGB
             )
 
-            st.session_state.original_image = (
-                original_rgb
-            )
+            st.session_state.original_image = image_rgb
+
 
             # =================================================
-            # STEP 1 — PREPROCESSING
+            # STEP 2 — PREPROCESSING
             # =================================================
+
+            st.header("🔧 Step 2 — Image Preprocessing")
 
             with st.spinner(
-                "🔧 Step 1/3: Preprocessing image..."
+                "🔧 Preprocessing image..."
             ):
 
-                temp_path = None
+                processed_pil = preprocess_image(
+                    temp_path
+                )
 
-                try:
-
-                    with tempfile.NamedTemporaryFile(
-                        suffix=".png",
-                        delete=False
-                    ) as temp_file:
-
-                        temp_file.write(file_bytes)
-                        temp_path = temp_file.name
-
-                    processed_pil = preprocess_image(
-                        temp_path
-                    )
-
-                finally:
-
-                    if (
-                        temp_path
-                        and os.path.exists(temp_path)
-                    ):
-                        os.remove(temp_path)
-
-            processed_rgb = np.array(
+            st.session_state.processed_image = (
                 processed_pil
             )
 
-            st.session_state.processed_image = (
-                processed_rgb
+            st.success(
+                "✅ Image preprocessing completed."
             )
 
-            # Processed BGR for OCR and YOLO
-            processed_bgr = cv2.cvtColor(
-                processed_rgb,
-                cv2.COLOR_RGB2BGR
-            )
+            col1, col2 = st.columns(2)
+
+            with col1:
+
+                st.subheader("Original Image")
+
+                st.image(
+                    st.session_state.original_image,
+                    use_container_width=True
+                )
+
+            with col2:
+
+                st.subheader("Preprocessed Image")
+
+                st.image(
+                    processed_pil,
+                    use_container_width=True
+                )
+
 
             # =================================================
-            # STEP 2 — OCR
+            # STEP 3 — OCR
             # =================================================
+
+            st.header("📝 Step 3 — Text Extraction")
 
             with st.spinner(
-                "📝 Step 2/3: Extracting text..."
+                "📝 Extracting text with OCR..."
             ):
+
+                # Convert processed PIL → RGB numpy
+                processed_rgb = np.array(
+                    processed_pil
+                )
+
+                # RGB → BGR for OpenCV
+                processed_bgr = cv2.cvtColor(
+                    processed_rgb,
+                    cv2.COLOR_RGB2BGR
+                )
 
                 text, _ = extract_text(
                     processed_bgr
                 )
 
-            st.session_state.ocr_text = text
+            st.session_state.ocr_text = (
+                text.strip()
+                if text
+                else ""
+            )
+
+            if st.session_state.ocr_text:
+
+                st.success(
+                    "✅ Text extraction completed."
+                )
+
+                st.text_area(
+                    "Extracted Text",
+                    value=st.session_state.ocr_text,
+                    height=250
+                )
+
+            else:
+
+                st.warning(
+                    "⚠️ No readable text was detected."
+                )
+
 
             # =================================================
-            # STEP 3 — YOLO
+            # STEP 4 — YOLO
             # =================================================
+
+            st.header("🎯 Step 4 — YOLO Object Detection")
 
             with st.spinner(
-                "🎯 Step 3/3: Detecting objects..."
+                "🎯 Detecting objects..."
             ):
 
                 detections, annotated = (
-                    detect_objects(
-                        processed_bgr
-                    )
+                    detect_objects(temp_path)
                 )
 
             st.session_state.detections = (
@@ -217,210 +266,140 @@ if uploaded_file is not None:
                 annotated
             )
 
+            if annotated is not None:
 
-        # ====================================================
-        # STEP 1 DISPLAY — PREPROCESSING
-        # ====================================================
+                annotated_rgb = cv2.cvtColor(
+                    annotated,
+                    cv2.COLOR_BGR2RGB
+                )
 
-        st.divider()
+                st.image(
+                    annotated_rgb,
+                    caption="YOLO Detection Result",
+                    use_container_width=True
+                )
 
-        st.header("1️⃣ Image & Preprocessing")
+            if detections:
 
-        col1, col2 = st.columns(2)
+                st.success(
+                    f"✅ Detected {len(detections)} object(s)."
+                )
 
-        with col1:
+                for item in detections:
 
-            st.subheader("Original Image")
+                    name = item.get(
+                        "class",
+                        "Unknown"
+                    )
 
-            st.image(
-                st.session_state.original_image,
-                use_container_width=True
+                    confidence = float(
+                        item.get(
+                            "confidence",
+                            0
+                        )
+                    )
+
+                    st.write(
+                        f"**{name}** — "
+                        f"{confidence:.1%}"
+                    )
+
+            else:
+
+                st.info(
+                    "No objects were detected."
+                )
+
+
+            # =================================================
+            # PROCESSING COMPLETE
+            # =================================================
+
+            st.session_state.processed = True
+
+            st.success(
+                "🎉 Image processing completed successfully!"
             )
 
-        with col2:
+            # Delete temporary file
 
-            st.subheader("Preprocessed Image")
+            try:
+                os.remove(temp_path)
+            except Exception:
+                pass
 
-            st.image(
-                st.session_state.processed_image,
-                use_container_width=True
+
+        except Exception as error:
+
+            st.error(
+                "❌ Error while processing image."
             )
 
+            st.exception(error)
 
-        # ====================================================
-        # STEP 2 DISPLAY — OCR
-        # ====================================================
+            st.session_state.processed = False
 
-        st.divider()
 
-        st.header("2️⃣ Text Extraction")
+# ============================================================
+# STEP 5 — CHATBOT
+# ============================================================
 
-        if st.session_state.ocr_text.strip():
+if (
+    st.session_state.processed
+    and st.session_state.original_image is not None
+):
 
-            st.text_area(
-                "Extracted Text",
-                value=st.session_state.ocr_text,
-                height=250
-            )
+    st.divider()
 
-        else:
+    st.header(
+        "💬 Step 5 — Ask Questions About This Image"
+    )
+
+    st.write(
+        "Image processing is complete. "
+        "Now ask a question about the uploaded image."
+    )
+
+    question = st.text_input(
+        "Your question",
+        placeholder=(
+            "Example: What is the title of this document?"
+        ),
+        key="question_input"
+    )
+
+    if st.button(
+        "🤖 Get Answer",
+        type="primary"
+    ):
+
+        if not question.strip():
 
             st.warning(
-                "No readable text was detected."
+                "Please enter a question."
             )
-
-
-        # ====================================================
-        # STEP 3 DISPLAY — YOLO
-        # ====================================================
-
-        st.divider()
-
-        st.header("3️⃣ YOLO Object Detection")
-
-        if st.session_state.annotated_image is not None:
-
-            annotated_rgb = cv2.cvtColor(
-                st.session_state.annotated_image,
-                cv2.COLOR_BGR2RGB
-            )
-
-            st.image(
-                annotated_rgb,
-                use_container_width=True
-            )
-
-        detections = st.session_state.detections
-
-        if detections:
-
-            for item in detections:
-
-                name = item.get(
-                    "class",
-                    "Unknown"
-                )
-
-                confidence = float(
-                    item.get(
-                        "confidence",
-                        0
-                    )
-                )
-
-                st.write(
-                    f"**{name}** — "
-                    f"{confidence:.1%}"
-                )
 
         else:
 
-            st.info(
-                "No objects were detected."
-            )
+            with st.spinner(
+                "🤖 Analyzing image and answering..."
+            ):
 
+                answer = answer_question(
+                    st.session_state.original_image,
+                    question,
+                    st.session_state.ocr_text,
+                    st.session_state.detections
+                )
 
-        # ====================================================
-        # STEP 4 — CHATBOT
-        # ====================================================
+            if answer:
 
-        st.divider()
-
-        st.header(
-            "4️⃣ 💬 Ask Questions About This Image"
-        )
-
-        question = st.text_input(
-            "Your question",
-            placeholder=(
-                "Example: What is the title of this document?"
-            )
-        )
-
-        if st.button(
-            "🤖 Get Answer",
-            type="primary"
-        ):
-
-            if not question.strip():
-
-                st.warning(
-                    "Please enter a question."
+                st.success(
+                    answer
                 )
 
             else:
 
-                with st.spinner(
-                    "🤖 Finding the answer..."
-                ):
-
-                    # First use OCR text
-                    text_answer = answer_from_text(
-                        question,
-                        st.session_state.ocr_text
-                    )
-
-                    not_found_message = (
-                        "Sorry, this information was not "
-                        "found in the document."
-                    )
-
-                    # If OCR cannot answer,
-                    # use image VQA
-                    if (
-                        not text_answer.strip()
-                        or text_answer.strip()
-                        == not_found_message
-                    ):
-
-                        final_answer = vqa_answer(
-                            Image.fromarray(
-                                st.session_state.original_image
-                            ),
-                            question,
-                            st.session_state.ocr_text,
-                            st.session_state.detections
-                        )
-
-                    else:
-
-                        final_answer = text_answer
-
-                # Save conversation
-                st.session_state.chat_history.append(
-                    (
-                        question,
-                        final_answer
-                    )
+                st.warning(
+                    "I could not determine a reliable answer."
                 )
-
-
-        # ====================================================
-        # CHAT HISTORY
-        # ====================================================
-
-        if st.session_state.chat_history:
-
-            st.subheader("💬 Conversation")
-
-            for question_text, answer_text in (
-                st.session_state.chat_history
-            ):
-
-                st.markdown(
-                    f"**You:** {question_text}"
-                )
-
-                st.success(
-                    answer_text
-                )
-
-
-    except Exception as error:
-
-        st.error(
-            "❌ Something went wrong while "
-            "processing this image."
-        )
-
-        st.exception(error)
