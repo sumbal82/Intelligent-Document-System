@@ -1,7 +1,9 @@
 streamlit
-opencv-python-headless==4.10.0.84
-numpy==1.26.4
+opencv-python-headless
+numpy
 Pillow
 easyocr
 ultralytics
 transformers
+torch
+torchvision
