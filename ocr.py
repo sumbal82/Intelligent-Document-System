@@ -10,7 +10,7 @@ def get_reader():
     return easyocr.Reader(
         ["en"],
         gpu=False,
-        verbose=True
+        verbose=False
     )
 
 
