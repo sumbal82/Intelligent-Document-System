@@ -2,23 +2,22 @@ from ultralytics import YOLO
 import cv2
 import os
 
-
 # ============================================================
 # LOAD YOLO MODEL
 # ============================================================
 
 print("Loading YOLO model...")
 
-MODEL_PATH = "models/best.pt"
+# best.pt is in the same folder as detection.py
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+MODEL_PATH = os.path.join(BASE_DIR, "best.pt")
 
 if not os.path.exists(MODEL_PATH):
     raise FileNotFoundError(
         f"YOLO model not found: {MODEL_PATH}"
     )
 
-model = YOLO(
-    MODEL_PATH
-)
+model = YOLO(MODEL_PATH)
 
 print("YOLO model loaded successfully.")
 
@@ -80,15 +79,11 @@ def detect_objects(image_path):
 
                 detections.append(
                     {
-                        "class": str(
-                            class_name
-                        ),
-
+                        "class": str(class_name),
                         "confidence": round(
                             confidence,
                             4
                         ),
-
                         "bbox": [
                             x1,
                             y1,
@@ -115,10 +110,7 @@ def detect_objects(image_path):
 
     else:
 
-        image = cv2.imread(
-            image_path
-        )
-
+        image = cv2.imread(image_path)
         annotated_image = image
 
     return (
