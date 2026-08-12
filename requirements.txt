@@ -1,9 +1,9 @@
 streamlit
 opencv-python-headless==4.10.0.84
-numpy<2
+numpy==1.26.4
 Pillow
-easyocr
-ultralytics
-transformers
-torch
-torchvision
+easyocr==1.7.2
+ultralytics==8.4.118
+transformers==5.15.0
+torch==2.13.0
+torchvision==0.28.0
