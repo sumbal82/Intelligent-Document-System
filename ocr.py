@@ -4,10 +4,6 @@ import easyocr
 import streamlit as st
 
 
-# ============================================================
-# LOAD EASYOCR ONLY WHEN NEEDED
-# ============================================================
-
 @st.cache_resource(show_spinner=False)
 def get_reader():
 
@@ -17,10 +13,6 @@ def get_reader():
         verbose=False
     )
 
-
-# ============================================================
-# OCR PREPROCESSING
-# ============================================================
 
 def preprocess_for_ocr(image):
 
@@ -62,21 +54,14 @@ def preprocess_for_ocr(image):
         tileGridSize=(8, 8)
     )
 
-    enhanced = clahe.apply(gray)
+    return clahe.apply(gray)
 
-    return enhanced
-
-
-# ============================================================
-# TEXT EXTRACTION
-# ============================================================
 
 def extract_text(image):
 
-    processed = preprocess_for_ocr(
-        image
-    )
+    processed = preprocess_for_ocr(image)
 
+    # EasyOCR loads only when OCR is actually needed
     reader = get_reader()
 
     results = reader.readtext(
@@ -114,11 +99,8 @@ def extract_text(image):
                 )
 
         except Exception:
-
             continue
 
-    text = "\n".join(
-        text_lines
-    )
+    text = "\n".join(text_lines)
 
     return text, results
