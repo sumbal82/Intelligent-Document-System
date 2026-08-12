@@ -1,45 +1,74 @@
 from ultralytics import YOLO
-import cv2
 import os
 
+
 # ============================================================
-# LOAD YOLO MODEL
+# MODEL PATH
 # ============================================================
 
-print("Loading YOLO model...")
-
-# best.pt is in the same folder as detection.py
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-MODEL_PATH = os.path.join(BASE_DIR, "best.pt")
 
-if not os.path.exists(MODEL_PATH):
-    raise FileNotFoundError(
-        f"YOLO model not found: {MODEL_PATH}"
-    )
+MODEL_PATH = os.path.join(
+    BASE_DIR,
+    "models",
+    "best.pt"
+)
 
-model = YOLO(MODEL_PATH)
 
-print("YOLO model loaded successfully.")
+# ============================================================
+# LOAD MODEL
+# ============================================================
+
+model = None
+
+
+def get_model():
+
+    global model
+
+    if model is None:
+
+        if not os.path.exists(MODEL_PATH):
+
+            raise FileNotFoundError(
+                f"YOLO model not found: {MODEL_PATH}"
+            )
+
+        model = YOLO(MODEL_PATH)
+
+    return model
 
 
 # ============================================================
 # OBJECT DETECTION
 # ============================================================
 
-def detect_objects(image_path):
+def detect_objects(image):
 
-    if not os.path.exists(image_path):
-        raise FileNotFoundError(
-            f"Image not found: {image_path}"
-        )
+    """
+    Detect objects from an image.
+
+    image:
+        OpenCV BGR image
+
+    Returns:
+        detections
+        annotated_image
+    """
+
+    if image is None:
+        raise ValueError("Image is empty.")
+
+    yolo_model = get_model()
 
     # --------------------------------------------------------
     # Run YOLO
     # --------------------------------------------------------
 
-    results = model(
-        image_path,
+    results = yolo_model.predict(
+        source=image,
         conf=0.25,
+        iou=0.45,
         verbose=False
     )
 
@@ -49,71 +78,65 @@ def detect_objects(image_path):
     # Read detections
     # --------------------------------------------------------
 
-    for result in results:
-
-        if result.boxes is None:
-            continue
-
-        for box in result.boxes:
-
-            try:
-
-                class_id = int(
-                    box.cls[0].item()
-                )
-
-                confidence = float(
-                    box.conf[0].item()
-                )
-
-                class_name = model.names.get(
-                    class_id,
-                    f"class_{class_id}"
-                )
-
-                # Bounding box
-                x1, y1, x2, y2 = map(
-                    int,
-                    box.xyxy[0].tolist()
-                )
-
-                detections.append(
-                    {
-                        "class": str(class_name),
-                        "confidence": round(
-                            confidence,
-                            4
-                        ),
-                        "bbox": [
-                            x1,
-                            y1,
-                            x2,
-                            y2
-                        ]
-                    }
-                )
-
-            except Exception as error:
-
-                print(
-                    "YOLO detection error:",
-                    error
-                )
-
-    # --------------------------------------------------------
-    # Annotated image
-    # --------------------------------------------------------
-
     if results:
 
-        annotated_image = results[0].plot()
+        result = results[0]
+
+        if result.boxes is not None:
+
+            for box in result.boxes:
+
+                try:
+
+                    class_id = int(
+                        box.cls[0].item()
+                    )
+
+                    confidence = float(
+                        box.conf[0].item()
+                    )
+
+                    class_name = yolo_model.names.get(
+                        class_id,
+                        f"class_{class_id}"
+                    )
+
+                    x1, y1, x2, y2 = map(
+                        int,
+                        box.xyxy[0].tolist()
+                    )
+
+                    detections.append(
+                        {
+                            "class": str(class_name),
+                            "confidence": round(
+                                confidence,
+                                4
+                            ),
+                            "bbox": [
+                                x1,
+                                y1,
+                                x2,
+                                y2
+                            ]
+                        }
+                    )
+
+                except Exception as error:
+
+                    print(
+                        "YOLO detection error:",
+                        error
+                    )
+
+        # ----------------------------------------------------
+        # Annotated image
+        # ----------------------------------------------------
+
+        annotated_image = result.plot()
 
     else:
 
-        image = cv2.imread(image_path)
-        annotated_image = image
+        annotated_image = image.copy()
 
-    return (
-        detections,
-        annotated_image
-    )
+    return detections, annotated_image
