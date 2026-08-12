@@ -4,8 +4,6 @@ import numpy as np
 import tempfile
 import os
 
-from PIL import Image
-
 from preprocessing import preprocess_image
 from ocr import extract_text
 from detection import detect_objects
@@ -23,9 +21,10 @@ st.set_page_config(
 )
 
 st.title("📄 Intelligent Document System")
+
 st.write(
     "Upload an image → Preprocess → Extract Text → "
-    "Detect Objects → Ask Questions"
+    "Detect Objects → Ask Any Question About the Image"
 )
 
 
@@ -44,25 +43,19 @@ defaults = {
 }
 
 for key, value in defaults.items():
-
     if key not in st.session_state:
         st.session_state[key] = value
 
 
 # ============================================================
-# STEP 1 — UPLOAD
+# STEP 1 — UPLOAD IMAGE
 # ============================================================
 
 st.header("📤 Step 1 — Upload Image")
 
 uploaded_file = st.file_uploader(
     "Choose an image",
-    type=[
-        "jpg",
-        "jpeg",
-        "png",
-        "webp"
-    ],
+    type=["jpg", "jpeg", "png", "webp"],
     accept_multiple_files=False
 )
 
@@ -81,13 +74,11 @@ if uploaded_file is not None:
         hash(file_bytes)
     )
 
-    # --------------------------------------------------------
-    # New image
-    # --------------------------------------------------------
+    # ========================================================
+    # PROCESS ONLY WHEN A NEW IMAGE IS UPLOADED
+    # ========================================================
 
     if current_id != st.session_state.image_id:
-
-        # Clear old data
 
         st.session_state.image_id = current_id
         st.session_state.original_image = None
@@ -97,11 +88,13 @@ if uploaded_file is not None:
         st.session_state.annotated_image = None
         st.session_state.processed = False
 
+        temp_path = None
+
         try:
 
-            # ------------------------------------------------
-            # Save uploaded image temporarily
-            # ------------------------------------------------
+            # =================================================
+            # SAVE TEMPORARY IMAGE
+            # =================================================
 
             suffix = os.path.splitext(
                 uploaded_file.name
@@ -116,9 +109,9 @@ if uploaded_file is not None:
                 temp_path = temp_file.name
 
 
-            # ------------------------------------------------
-            # Read image
-            # ------------------------------------------------
+            # =================================================
+            # READ IMAGE
+            # =================================================
 
             image_array = np.frombuffer(
                 file_bytes,
@@ -131,11 +124,9 @@ if uploaded_file is not None:
             )
 
             if image_bgr is None:
-
                 st.error(
                     "❌ Could not read the uploaded image."
                 )
-
                 st.stop()
 
 
@@ -173,6 +164,7 @@ if uploaded_file is not None:
                 "✅ Image preprocessing completed."
             )
 
+
             col1, col2 = st.columns(2)
 
             with col1:
@@ -181,7 +173,7 @@ if uploaded_file is not None:
 
                 st.image(
                     st.session_state.original_image,
-                    use_container_width=True
+                    width="stretch"
                 )
 
             with col2:
@@ -190,26 +182,24 @@ if uploaded_file is not None:
 
                 st.image(
                     processed_pil,
-                    use_container_width=True
+                    width="stretch"
                 )
 
 
             # =================================================
-            # STEP 3 — OCR
+            # STEP 3 — EASY OCR
             # =================================================
 
             st.header("📝 Step 3 — Text Extraction")
 
             with st.spinner(
-                "📝 Extracting text with OCR..."
+                "📝 Extracting text with EasyOCR..."
             ):
 
-                # Convert processed PIL → RGB numpy
                 processed_rgb = np.array(
                     processed_pil
                 )
 
-                # RGB → BGR for OpenCV
                 processed_bgr = cv2.cvtColor(
                     processed_rgb,
                     cv2.COLOR_RGB2BGR
@@ -245,10 +235,12 @@ if uploaded_file is not None:
 
 
             # =================================================
-            # STEP 4 — YOLO
+            # STEP 4 — YOLO OBJECT DETECTION
             # =================================================
 
-            st.header("🎯 Step 4 — YOLO Object Detection")
+            st.header(
+                "🎯 Step 4 — YOLO Object Detection"
+            )
 
             with st.spinner(
                 "🎯 Detecting objects..."
@@ -276,8 +268,9 @@ if uploaded_file is not None:
                 st.image(
                     annotated_rgb,
                     caption="YOLO Detection Result",
-                    use_container_width=True
+                    width="stretch"
                 )
+
 
             if detections:
 
@@ -321,13 +314,6 @@ if uploaded_file is not None:
                 "🎉 Image processing completed successfully!"
             )
 
-            # Delete temporary file
-
-            try:
-                os.remove(temp_path)
-            except Exception:
-                pass
-
 
         except Exception as error:
 
@@ -340,33 +326,50 @@ if uploaded_file is not None:
             st.session_state.processed = False
 
 
+        finally:
+
+            # =================================================
+            # DELETE TEMPORARY FILE
+            # =================================================
+
+            if temp_path is not None:
+
+                try:
+                    os.remove(temp_path)
+                except Exception:
+                    pass
+
+
 # ============================================================
-# STEP 5 — CHATBOT
+# STEP 5 — IMAGE CHATBOT
 # ============================================================
 
 if (
     st.session_state.processed
-    and st.session_state.original_image is not None
+    and
+    st.session_state.original_image is not None
 ):
 
     st.divider()
 
     st.header(
-        "💬 Step 5 — Ask Questions About This Image"
+        "💬 Step 5 — Ask Any Question About This Image"
     )
 
     st.write(
-        "Image processing is complete. "
-        "Now ask a question about the uploaded image."
+        "Ask any question related to the uploaded image. "
+        "Questions are not predefined."
     )
+
 
     question = st.text_input(
         "Your question",
         placeholder=(
-            "Example: What is the title of this document?"
+            "Ask anything about this image..."
         ),
         key="question_input"
     )
+
 
     if st.button(
         "🤖 Get Answer",
@@ -376,7 +379,7 @@ if (
         if not question.strip():
 
             st.warning(
-                "Please enter a question."
+                "⚠️ Please enter a question."
             )
 
         else:
@@ -392,6 +395,7 @@ if (
                     st.session_state.detections
                 )
 
+
             if answer:
 
                 st.success(
@@ -401,5 +405,5 @@ if (
             else:
 
                 st.warning(
-                    "I could not determine a reliable answer."
+                    "⚠️ I could not determine a reliable answer."
                 )
