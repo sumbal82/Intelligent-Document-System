@@ -4,15 +4,22 @@ import easyocr
 import streamlit as st
 
 
+# ============================================================
+# EASYOCR MODEL
+# ============================================================
+
 @st.cache_resource(show_spinner=False)
 def get_reader():
-
     return easyocr.Reader(
         ["en"],
         gpu=False,
         verbose=False
     )
 
+
+# ============================================================
+# OCR PREPROCESSING
+# ============================================================
 
 def preprocess_for_ocr(image):
 
@@ -41,6 +48,7 @@ def preprocess_for_ocr(image):
             "Invalid image format for OCR."
         )
 
+    # Noise reduction
     gray = cv2.fastNlMeansDenoising(
         gray,
         None,
@@ -49,19 +57,26 @@ def preprocess_for_ocr(image):
         searchWindowSize=21
     )
 
+    # Contrast enhancement
     clahe = cv2.createCLAHE(
         clipLimit=2.0,
         tileGridSize=(8, 8)
     )
 
-    return clahe.apply(gray)
+    enhanced = clahe.apply(gray)
 
+    return enhanced
+
+
+# ============================================================
+# TEXT EXTRACTION
+# ============================================================
 
 def extract_text(image):
 
     processed = preprocess_for_ocr(image)
 
-    # EasyOCR loads only when OCR is actually needed
+    # Model loads only when OCR is actually requested
     reader = get_reader()
 
     results = reader.readtext(
@@ -101,6 +116,8 @@ def extract_text(image):
         except Exception:
             continue
 
-    text = "\n".join(text_lines)
+    text = "\n".join(
+        text_lines
+    )
 
     return text, results
