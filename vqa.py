@@ -1,4 +1,4 @@
-﻿from transformers import (
+from transformers import (
     AutoProcessor,
     AutoModelForImageTextToText
 )
@@ -22,11 +22,7 @@ model = AutoModelForImageTextToText.from_pretrained(
     MODEL_NAME
 )
 
-device = (
-    "cuda"
-    if torch.cuda.is_available()
-    else "cpu"
-)
+device = "cuda" if torch.cuda.is_available() else "cpu"
 
 model.to(device)
 model.eval()
@@ -41,21 +37,14 @@ print(f"SmolVLM loaded on {device}")
 def format_detections(detections):
 
     if not detections:
-        return "No objects were detected by YOLO."
+        return "No objects were detected."
 
     lines = []
 
     for obj in detections:
 
-        name = obj.get(
-            "class",
-            "Unknown"
-        )
-
-        confidence = obj.get(
-            "confidence",
-            0
-        )
+        name = obj.get("class", "Unknown")
+        confidence = obj.get("confidence", 0)
 
         try:
             confidence = float(confidence)
@@ -63,15 +52,14 @@ def format_detections(detections):
             confidence = 0.0
 
         lines.append(
-            f"- {name} "
-            f"(confidence {confidence:.2f})"
+            f"- {name} ({confidence:.2f})"
         )
 
     return "\n".join(lines)
 
 
 # ============================================================
-# CLEAN MODEL ANSWER
+# CLEAN ANSWER
 # ============================================================
 
 def clean_answer(answer):
@@ -81,7 +69,6 @@ def clean_answer(answer):
 
     answer = answer.strip()
 
-    # Remove common prefixes
     prefixes = [
         "Assistant:",
         "assistant:",
@@ -97,23 +84,17 @@ def clean_answer(answer):
                 len(prefix):
             ].strip()
 
-    # If the model somehow returns another
-    # conversation section, keep only the answer
     if "Assistant:" in answer:
-
         answer = answer.split(
             "Assistant:"
         )[-1].strip()
 
     if "assistant:" in answer:
-
         answer = answer.split(
             "assistant:"
         )[-1].strip()
 
-    # Remove accidental User section
     if answer.startswith("User:"):
-
         answer = answer[
             len("User:"):
         ].strip()
@@ -135,7 +116,7 @@ def ask_vlm(
     try:
 
         # ----------------------------------------------------
-        # Load image
+        # IMAGE
         # ----------------------------------------------------
 
         if isinstance(image, str):
@@ -144,14 +125,9 @@ def ask_vlm(
                 image
             ).convert("RGB")
 
-        elif isinstance(
-            image,
-            Image.Image
-        ):
+        elif isinstance(image, Image.Image):
 
-            image = image.convert(
-                "RGB"
-            )
+            image = image.convert("RGB")
 
         else:
 
@@ -159,7 +135,7 @@ def ask_vlm(
 
 
         # ----------------------------------------------------
-        # OCR context
+        # OCR CONTEXT
         # ----------------------------------------------------
 
         if document_text:
@@ -167,6 +143,11 @@ def ask_vlm(
             ocr_context = str(
                 document_text
             ).strip()
+
+            # Prevent huge OCR text from making
+            # every question unnecessarily slow.
+            if len(ocr_context) > 4000:
+                ocr_context = ocr_context[:4000]
 
         else:
 
@@ -176,7 +157,7 @@ def ask_vlm(
 
 
         # ----------------------------------------------------
-        # YOLO context
+        # YOLO CONTEXT
         # ----------------------------------------------------
 
         yolo_context = format_detections(
@@ -185,44 +166,50 @@ def ask_vlm(
 
 
         # ----------------------------------------------------
-        # Instruction
+        # QUESTION
+        # ----------------------------------------------------
+
+        question = str(
+            question
+        ).strip()
+
+
+        if not question:
+
+            return (
+                "Please enter a question."
+            )
+
+
+        # ----------------------------------------------------
+        # SHORT INSTRUCTION
         # ----------------------------------------------------
 
         instruction = f"""
-Analyze the uploaded image and answer the user's question.
+Answer the user's question about the uploaded image.
 
-Use the actual image as the primary source.
+Use the image as the primary source.
 
-Use OCR text as supporting information when the question
-is about written content.
+Use OCR when the question asks about written text.
+Use object detections when useful.
 
-Use YOLO detections as supporting information when useful.
+Do not guess.
+If something is not visible, say that it is not clearly visible.
+Give only a concise answer.
 
-Rules:
-- Do not invent information.
-- Do not guess when the information is not visible.
-- For questions about text, use the visible text and OCR.
-- For questions about objects, inspect the image.
-- For questions about colors or appearance, inspect the image.
-- Give only the answer to the user's question.
-- Do not repeat these instructions.
-- Do not repeat the OCR text.
-- Do not write "User:" or "Assistant:".
-- Keep the answer concise and direct.
-
-OCR TEXT:
+OCR:
 {ocr_context}
 
-YOLO DETECTIONS:
+Detected objects:
 {yolo_context}
 
-USER QUESTION:
+Question:
 {question}
 """
 
 
         # ----------------------------------------------------
-        # Chat template
+        # CHAT TEMPLATE
         # ----------------------------------------------------
 
         messages = [
@@ -248,7 +235,7 @@ USER QUESTION:
 
 
         # ----------------------------------------------------
-        # Processor
+        # PROCESS IMAGE + TEXT
         # ----------------------------------------------------
 
         inputs = processor(
@@ -259,7 +246,7 @@ USER QUESTION:
 
 
         # ----------------------------------------------------
-        # Move tensors to device
+        # MOVE TO CPU/GPU
         # ----------------------------------------------------
 
         inputs = {
@@ -271,23 +258,21 @@ USER QUESTION:
 
 
         # ----------------------------------------------------
-        # Generate
+        # GENERATE ANSWER
         # ----------------------------------------------------
 
-        with torch.no_grad():
+        with torch.inference_mode():
 
             output = model.generate(
                 **inputs,
-                max_new_tokens=80,
+                max_new_tokens=40,
                 do_sample=False
             )
 
 
-        # ====================================================
-        # IMPORTANT:
-        # Decode ONLY newly generated tokens.
-        # This prevents the whole User prompt from appearing.
-        # ====================================================
+        # ----------------------------------------------------
+        # ONLY NEW TOKENS
+        # ----------------------------------------------------
 
         if "input_ids" in inputs:
 
@@ -305,6 +290,10 @@ USER QUESTION:
             generated_tokens = output
 
 
+        # ----------------------------------------------------
+        # DECODE
+        # ----------------------------------------------------
+
         answer = processor.batch_decode(
             generated_tokens,
             skip_special_tokens=True
@@ -312,7 +301,7 @@ USER QUESTION:
 
 
         # ----------------------------------------------------
-        # Clean answer
+        # CLEAN
         # ----------------------------------------------------
 
         answer = clean_answer(
@@ -355,6 +344,7 @@ def answer_question(
     question = str(
         question
     ).strip()
+
 
     if not question:
 
