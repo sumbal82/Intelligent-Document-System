@@ -1,34 +1,56 @@
+import torch
+from PIL import Image
 from transformers import (
     AutoProcessor,
     AutoModelForImageTextToText
 )
-from PIL import Image
-import torch
+
 
 # ============================================================
-# LOAD SMOLVLM ONCE
+# MODEL SETTINGS
 # ============================================================
 
 MODEL_NAME = "HuggingFaceTB/SmolVLM-256M-Instruct"
 
-print("Loading SmolVLM...")
-
-device = "cuda" if torch.cuda.is_available() else "cpu"
-
-processor = AutoProcessor.from_pretrained(MODEL_NAME)
-
-model = AutoModelForImageTextToText.from_pretrained(
-    MODEL_NAME
-)
-
-model.to(device)
-model.eval()
-
-print(f"SmolVLM loaded on {device}")
+_device = None
+_processor = None
+_model = None
 
 
 # ============================================================
-# RESIZE IMAGE FOR FASTER VLM
+# LOAD MODEL ONLY ONCE
+# ============================================================
+
+def get_model():
+
+    global _device
+    global _processor
+    global _model
+
+    if _model is None:
+
+        _device = (
+            "cuda"
+            if torch.cuda.is_available()
+            else "cpu"
+        )
+
+        _processor = AutoProcessor.from_pretrained(
+            MODEL_NAME
+        )
+
+        _model = AutoModelForImageTextToText.from_pretrained(
+            MODEL_NAME
+        )
+
+        _model = _model.to(_device)
+        _model.eval()
+
+    return _processor, _model, _device
+
+
+# ============================================================
+# PREPARE IMAGE
 # ============================================================
 
 def prepare_vlm_image(image):
@@ -55,7 +77,7 @@ def prepare_vlm_image(image):
 
 
 # ============================================================
-# YOLO INFORMATION
+# FORMAT YOLO DETECTIONS
 # ============================================================
 
 def format_detections(detections):
@@ -114,18 +136,6 @@ def clean_answer(answer):
                 len(prefix):
             ].strip()
 
-    if "Assistant:" in answer:
-
-        answer = answer.split(
-            "Assistant:"
-        )[-1].strip()
-
-    if "assistant:" in answer:
-
-        answer = answer.split(
-            "assistant:"
-        )[-1].strip()
-
     return answer.strip()
 
 
@@ -143,7 +153,13 @@ def ask_vlm(
     try:
 
         # ----------------------------------------------------
-        # LOAD IMAGE
+        # MODEL
+        # ----------------------------------------------------
+
+        processor, model, device = get_model()
+
+        # ----------------------------------------------------
+        # IMAGE
         # ----------------------------------------------------
 
         if isinstance(image, str):
@@ -160,42 +176,7 @@ def ask_vlm(
 
             return None
 
-        # Resize only for VLM
         image = prepare_vlm_image(image)
-
-
-        # ----------------------------------------------------
-        # OCR CONTEXT
-        # ----------------------------------------------------
-
-        if document_text:
-
-            ocr_context = str(
-                document_text
-            ).strip()
-
-            if len(ocr_context) > 2500:
-
-                ocr_context = (
-                    ocr_context[:2500]
-                    + "..."
-                )
-
-        else:
-
-            ocr_context = (
-                "No readable text was detected."
-            )
-
-
-        # ----------------------------------------------------
-        # YOLO CONTEXT
-        # ----------------------------------------------------
-
-        yolo_context = format_detections(
-            detections
-        )
-
 
         # ----------------------------------------------------
         # QUESTION
@@ -209,31 +190,62 @@ def ask_vlm(
 
             return "Please enter a question."
 
+        # ----------------------------------------------------
+        # OCR CONTEXT
+        # ----------------------------------------------------
+
+        if document_text:
+
+            ocr_context = str(
+                document_text
+            ).strip()
+
+            # Prevent huge prompts
+            if len(ocr_context) > 4000:
+
+                ocr_context = (
+                    ocr_context[:4000]
+                    + "..."
+                )
+
+        else:
+
+            ocr_context = (
+                "No readable text was detected."
+            )
 
         # ----------------------------------------------------
-        # SHORT PROMPT
+        # YOLO CONTEXT
+        # ----------------------------------------------------
+
+        yolo_context = format_detections(
+            detections
+        )
+
+        # ----------------------------------------------------
+        # INSTRUCTION
         # ----------------------------------------------------
 
         instruction = f"""
-Answer the question about this image.
+Answer the user's question about the uploaded image.
 
-Look carefully at the image.
-Use OCR text when useful.
-Use detected objects when useful.
-Answer only what can be determined from the image.
-Do not invent information.
-Keep the answer short.
+Rules:
+1. Look carefully at the image.
+2. Use the OCR text when the question is about written text.
+3. Use the detected objects when useful.
+4. Do not invent information.
+5. If the answer cannot be determined from the image, say so.
+6. Give a short and direct answer.
 
-OCR:
+OCR TEXT:
 {ocr_context}
 
-Objects:
+DETECTED OBJECTS:
 {yolo_context}
 
-Question:
+QUESTION:
 {question}
 """
-
 
         # ----------------------------------------------------
         # CHAT TEMPLATE
@@ -254,15 +266,13 @@ Question:
             }
         ]
 
-
         prompt = processor.apply_chat_template(
             messages,
             add_generation_prompt=True
         )
 
-
         # ----------------------------------------------------
-        # PROCESS IMAGE
+        # PROCESS
         # ----------------------------------------------------
 
         inputs = processor(
@@ -271,9 +281,8 @@ Question:
             return_tensors="pt"
         )
 
-
         # ----------------------------------------------------
-        # MOVE TO DEVICE
+        # DEVICE
         # ----------------------------------------------------
 
         inputs = {
@@ -283,7 +292,6 @@ Question:
             for key, value in inputs.items()
         }
 
-
         # ----------------------------------------------------
         # GENERATE
         # ----------------------------------------------------
@@ -292,13 +300,12 @@ Question:
 
             output = model.generate(
                 **inputs,
-                max_new_tokens=20,
+                max_new_tokens=40,
                 do_sample=False
             )
 
-
         # ----------------------------------------------------
-        # REMOVE INPUT TOKENS
+        # REMOVE PROMPT TOKENS
         # ----------------------------------------------------
 
         if "input_ids" in inputs:
@@ -307,14 +314,14 @@ Question:
                 inputs["input_ids"].shape[1]
             )
 
-            generated_tokens = (
-                output[:, input_length:]
-            )
+            generated_tokens = output[
+                :,
+                input_length:
+            ]
 
         else:
 
             generated_tokens = output
-
 
         # ----------------------------------------------------
         # DECODE
@@ -325,15 +332,9 @@ Question:
             skip_special_tokens=True
         )[0]
 
-
-        # ----------------------------------------------------
-        # CLEAN
-        # ----------------------------------------------------
-
         answer = clean_answer(
             answer
         )
-
 
         if not answer:
 
@@ -343,7 +344,6 @@ Question:
             )
 
         return answer
-
 
     except Exception as error:
 
