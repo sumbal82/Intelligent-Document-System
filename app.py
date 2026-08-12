@@ -1,238 +1,105 @@
-import os
 import streamlit as st
+import cv2
+import numpy as np
 from PIL import Image
 
+from ocr import extract_text
+
+
+# ==============================
+# PAGE SETTINGS
+# ==============================
+
 st.set_page_config(
-    page_title="Intelligent Document Understanding System",
+    page_title="Intelligent Document System",
     page_icon="📄",
     layout="wide"
 )
 
-st.title("📄 Intelligent Document Understanding System")
-st.write("Upload an image and process it using OCR and YOLO.")
+st.title("📄 Intelligent Document System")
+st.write("Upload an image and extract its text using OCR.")
 
-if "processed" not in st.session_state:
-    st.session_state.processed = False
 
-if "text" not in st.session_state:
-    st.session_state.text = ""
-
-if "detections" not in st.session_state:
-    st.session_state.detections = []
-
-if "image_path" not in st.session_state:
-    st.session_state.image_path = ""
-
-if "detection_image" not in st.session_state:
-    st.session_state.detection_image = None
+# ==============================
+# IMAGE UPLOAD
+# ==============================
 
 uploaded_file = st.file_uploader(
     "Upload an image",
-    type=["jpg", "jpeg", "png"]
+    type=["jpg", "jpeg", "png", "webp"]
 )
+
+
+# ==============================
+# PROCESS IMAGE
+# ==============================
 
 if uploaded_file is not None:
 
-    os.makedirs("input", exist_ok=True)
+    try:
 
-    image_path = os.path.join(
-        "input",
-        "current_image.jpg"
-    )
+        # Read uploaded file
+        file_bytes = uploaded_file.getvalue()
 
-    with open(image_path, "wb") as f:
-        f.write(uploaded_file.getbuffer())
-
-    st.session_state.image_path = image_path
-    st.session_state.processed = False
-    st.session_state.text = ""
-    st.session_state.detections = []
-    st.session_state.detection_image = None
-
-    st.image(
-        uploaded_file,
-        caption="Uploaded Image",
-        width="stretch"
-    )
-
-    if st.button(
-        "🚀 Process Image",
-        width="stretch"
-    ):
-
-        # OCR
-        try:
-
-            from ocr import extract_text
-
-            with st.spinner("📝 Extracting text..."):
-
-                image = Image.open(
-                    image_path
-                ).convert("RGB")
-
-                text = extract_text(image)
-
-            if text is None:
-                text = ""
-
-            st.session_state.text = str(text).strip()
-
-            st.success("✅ OCR completed")
-
-        except Exception as e:
-
-            st.error(
-                "OCR error: " + str(e)
-            )
-
-        # YOLO
-        try:
-
-            from detection import detect_objects
-
-            with st.spinner("🔍 Detecting objects..."):
-
-                detections, annotated_image = detect_objects(
-                    image_path
-                )
-
-            if detections is None:
-                detections = []
-
-            st.session_state.detections = detections
-
-            if annotated_image is not None:
-
-                output_path = os.path.join(
-                    "input",
-                    "detected_current.jpg"
-                )
-
-                try:
-
-                    import cv2
-
-                    cv2.imwrite(
-                        output_path,
-                        annotated_image
-                    )
-
-                    st.session_state.detection_image = output_path
-
-                except Exception:
-
-                    st.session_state.detection_image = None
-
-            st.success("✅ YOLO detection completed")
-
-        except Exception as e:
-
-            st.error(
-                "YOLO error: " + str(e)
-            )
-
-        st.session_state.processed = True
-
-if st.session_state.processed:
-
-    st.divider()
-
-    st.header("📄 Extracted Text")
-
-    if st.session_state.text:
-
-        st.text_area(
-            "OCR Result",
-            st.session_state.text,
-            height=250
+        # Convert bytes to numpy array
+        image_array = np.frombuffer(
+            file_bytes,
+            dtype=np.uint8
         )
 
-    else:
-
-        st.info(
-            "No readable text was detected."
+        # Decode image
+        image = cv2.imdecode(
+            image_array,
+            cv2.IMREAD_COLOR
         )
 
-    st.header("🔍 Detected Objects")
+        if image is None:
+            st.error("❌ Could not read this image.")
+            st.stop()
 
-    if st.session_state.detections:
-
-        for obj in st.session_state.detections:
-
-            name = str(
-                obj.get("class", "Unknown")
-            )
-
-            confidence = obj.get(
-                "confidence",
-                0
-            )
-
-            st.write(
-                name
-                + " — Confidence: "
-                + str(round(float(confidence), 2))
-            )
-
-    else:
-
-        st.info(
-            "No trained objects were detected."
+        # Convert BGR -> RGB for Streamlit
+        image_rgb = cv2.cvtColor(
+            image,
+            cv2.COLOR_BGR2RGB
         )
 
-    if st.session_state.detection_image:
+        # ==============================
+        # DISPLAY IMAGE
+        # ==============================
 
-        st.header("🖼️ Detection Result")
+        st.subheader("🖼️ Uploaded Image")
 
         st.image(
-            st.session_state.detection_image,
-            caption="YOLO Detection",
-            width="stretch"
+            image_rgb,
+            use_container_width=True
         )
 
-    st.divider()
+        # ==============================
+        # OCR
+        # ==============================
 
-    st.header("💬 Ask Questions")
+        with st.spinner("🔍 Extracting text..."):
 
-    question = st.text_input(
-        "Ask a question about the image"
-    )
+            text, results = extract_text(image)
 
-    if st.button("🔎 Ask Question"):
+        st.subheader("📝 Extracted Text")
 
-        if not question.strip():
+        if text.strip():
 
-            st.warning(
-                "Please enter a question."
+            st.text_area(
+                "OCR Result",
+                value=text,
+                height=250
             )
 
         else:
 
-            try:
+            st.warning(
+                "No readable text was detected."
+            )
 
-                from vqa import answer_question
+    except Exception as e:
 
-                with st.spinner(
-                    "🤖 Analyzing image..."
-                ):
+        st.error("❌ Error while processing image.")
 
-                    answer = answer_question(
-                        st.session_state.image_path,
-                        question,
-                        document_text=st.session_state.text,
-                        detections=st.session_state.detections
-                    )
-
-                if answer is None:
-                    answer = "I could not determine the answer."
-
-                st.success(
-                    str(answer)
-                )
-
-            except Exception as e:
-
-                st.error(
-                    "VQA error: " + str(e)
-                )
+        st.exception(e)
