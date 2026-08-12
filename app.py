@@ -3,11 +3,6 @@ import os
 import cv2
 from PIL import Image
 
-from preprocessing import preprocess_image
-from ocr import extract_text
-from detection import detect_objects
-from vqa import answer_question
-
 
 # ============================================================
 # PAGE CONFIG
@@ -66,7 +61,7 @@ if uploaded_file is not None:
 
     os.makedirs("input", exist_ok=True)
 
-    # Keep original file extension
+    # Get original extension
     extension = os.path.splitext(
         uploaded_file.name
     )[1].lower()
@@ -79,14 +74,13 @@ if uploaded_file is not None:
         "test" + extension
     )
 
-    # Save uploaded image
+    # Save image
     with open(image_path, "wb") as file:
         file.write(uploaded_file.getbuffer())
 
     st.session_state.image_path = image_path
 
-    # Display uploaded image directly
-    # instead of reading it again from disk
+    # Display directly from uploaded file
     uploaded_file.seek(0)
 
     st.image(
@@ -99,7 +93,7 @@ if uploaded_file is not None:
 
 
     # ========================================================
-    # PROCESS IMAGE
+    # PROCESS IMAGE BUTTON
     # ========================================================
 
     if st.button(
@@ -120,6 +114,9 @@ if uploaded_file is not None:
         # ====================================================
 
         try:
+
+            # Load only when needed
+            from preprocessing import preprocess_image
 
             with st.spinner(
                 "🔄 Preprocessing image..."
@@ -163,6 +160,9 @@ if uploaded_file is not None:
         # ====================================================
 
         try:
+
+            # Load EasyOCR module only when needed
+            from ocr import extract_text
 
             with st.spinner(
                 "📝 Extracting text using EasyOCR..."
@@ -227,6 +227,9 @@ if uploaded_file is not None:
         # ====================================================
 
         try:
+
+            # Load YOLO only when needed
+            from detection import detect_objects
 
             with st.spinner(
                 "🔍 Detecting objects using YOLO..."
@@ -335,13 +338,10 @@ if st.session_state.processed:
             )
 
             try:
-
                 confidence = float(
                     confidence
                 )
-
             except Exception:
-
                 confidence = 0.0
 
             st.write(
@@ -357,7 +357,7 @@ if st.session_state.processed:
 
 
     # ========================================================
-    # YOLO IMAGE
+    # YOLO DETECTION IMAGE
     # ========================================================
 
     if st.session_state.detection_image:
@@ -525,10 +525,7 @@ if st.session_state.processed:
                             )
 
                             if name not in names:
-
-                                names.append(
-                                    name
-                                )
+                                names.append(name)
 
                         answer = (
                             "Detected objects: "
@@ -586,10 +583,14 @@ if st.session_state.processed:
 
 
                 # =================================================
-                # GENERAL VISUAL QUESTIONS
+                # GENERAL IMAGE QUESTIONS
                 # =================================================
 
                 else:
+
+                    # Load VQA only when a general
+                    # visual question is actually asked
+                    from vqa import answer_question
 
                     with st.spinner(
                         "🤖 AI is analyzing the image..."
@@ -612,13 +613,11 @@ if st.session_state.processed:
                 # =================================================
 
                 if answer is None:
-
                     answer = ""
 
                 answer = str(
                     answer
                 ).strip()
-
 
                 if not answer:
 
