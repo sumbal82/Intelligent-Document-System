@@ -1,10 +1,14 @@
-
 import cv2
+import numpy as np
 import easyocr
 import streamlit as st
 
 
-@st.cache_resource
+# ============================================================
+# LOAD EASYOCR ONLY WHEN NEEDED
+# ============================================================
+
+@st.cache_resource(show_spinner=False)
 def get_reader():
 
     return easyocr.Reader(
@@ -14,15 +18,36 @@ def get_reader():
     )
 
 
+# ============================================================
+# OCR PREPROCESSING
+# ============================================================
+
 def preprocess_for_ocr(image):
 
     if image is None:
-        raise ValueError("Image is empty")
+        raise ValueError("Image is empty.")
 
-    gray = cv2.cvtColor(
-        image,
-        cv2.COLOR_BGR2GRAY
-    )
+    image = np.asarray(image)
+
+    if image.ndim == 2:
+
+        gray = image
+
+    elif image.ndim == 3:
+
+        if image.shape[2] == 4:
+            image = image[:, :, :3]
+
+        gray = cv2.cvtColor(
+            image,
+            cv2.COLOR_BGR2GRAY
+        )
+
+    else:
+
+        raise ValueError(
+            "Invalid image format for OCR."
+        )
 
     gray = cv2.fastNlMeansDenoising(
         gray,
@@ -42,9 +67,15 @@ def preprocess_for_ocr(image):
     return enhanced
 
 
+# ============================================================
+# TEXT EXTRACTION
+# ============================================================
+
 def extract_text(image):
 
-    processed = preprocess_for_ocr(image)
+    processed = preprocess_for_ocr(
+        image
+    )
 
     reader = get_reader()
 
@@ -60,7 +91,10 @@ def extract_text(image):
 
     for item in results:
 
-        if len(item) >= 3:
+        if len(item) < 3:
+            continue
+
+        try:
 
             detected_text = str(
                 item[1]
@@ -74,10 +108,17 @@ def extract_text(image):
                 detected_text
                 and confidence >= 0.20
             ):
+
                 text_lines.append(
                     detected_text
                 )
 
-    text = "\n".join(text_lines)
+        except Exception:
+
+            continue
+
+    text = "\n".join(
+        text_lines
+    )
 
     return text, results
