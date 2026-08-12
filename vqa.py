@@ -5,29 +5,53 @@ from transformers import (
 from PIL import Image
 import torch
 
-
 # ============================================================
-# LOAD SMOLVLM
+# LOAD SMOLVLM ONCE
 # ============================================================
 
 MODEL_NAME = "HuggingFaceTB/SmolVLM-256M-Instruct"
 
 print("Loading SmolVLM...")
 
-processor = AutoProcessor.from_pretrained(
-    MODEL_NAME
-)
+device = "cuda" if torch.cuda.is_available() else "cpu"
+
+processor = AutoProcessor.from_pretrained(MODEL_NAME)
 
 model = AutoModelForImageTextToText.from_pretrained(
     MODEL_NAME
 )
 
-device = "cuda" if torch.cuda.is_available() else "cpu"
-
 model.to(device)
 model.eval()
 
 print(f"SmolVLM loaded on {device}")
+
+
+# ============================================================
+# RESIZE IMAGE FOR FASTER VLM
+# ============================================================
+
+def prepare_vlm_image(image):
+
+    image = image.convert("RGB")
+
+    max_size = 1024
+
+    width, height = image.size
+
+    if max(width, height) > max_size:
+
+        scale = max_size / max(width, height)
+
+        new_width = int(width * scale)
+        new_height = int(height * scale)
+
+        image = image.resize(
+            (new_width, new_height),
+            Image.Resampling.LANCZOS
+        )
+
+    return image
 
 
 # ============================================================
@@ -43,8 +67,14 @@ def format_detections(detections):
 
     for obj in detections:
 
-        name = obj.get("class", "Unknown")
-        confidence = obj.get("confidence", 0)
+        name = str(
+            obj.get("class", "Unknown")
+        )
+
+        confidence = obj.get(
+            "confidence",
+            0
+        )
 
         try:
             confidence = float(confidence)
@@ -67,7 +97,7 @@ def clean_answer(answer):
     if not answer:
         return ""
 
-    answer = answer.strip()
+    answer = str(answer).strip()
 
     prefixes = [
         "Assistant:",
@@ -85,19 +115,16 @@ def clean_answer(answer):
             ].strip()
 
     if "Assistant:" in answer:
+
         answer = answer.split(
             "Assistant:"
         )[-1].strip()
 
     if "assistant:" in answer:
+
         answer = answer.split(
             "assistant:"
         )[-1].strip()
-
-    if answer.startswith("User:"):
-        answer = answer[
-            len("User:"):
-        ].strip()
 
     return answer.strip()
 
@@ -116,7 +143,7 @@ def ask_vlm(
     try:
 
         # ----------------------------------------------------
-        # IMAGE
+        # LOAD IMAGE
         # ----------------------------------------------------
 
         if isinstance(image, str):
@@ -133,6 +160,9 @@ def ask_vlm(
 
             return None
 
+        # Resize only for VLM
+        image = prepare_vlm_image(image)
+
 
         # ----------------------------------------------------
         # OCR CONTEXT
@@ -144,15 +174,17 @@ def ask_vlm(
                 document_text
             ).strip()
 
-            # Prevent huge OCR text from making
-            # every question unnecessarily slow.
-            if len(ocr_context) > 4000:
-                ocr_context = ocr_context[:4000]
+            if len(ocr_context) > 2500:
+
+                ocr_context = (
+                    ocr_context[:2500]
+                    + "..."
+                )
 
         else:
 
             ocr_context = (
-                "No reliable OCR text was extracted."
+                "No readable text was detected."
             )
 
 
@@ -173,34 +205,29 @@ def ask_vlm(
             question
         ).strip()
 
-
         if not question:
 
-            return (
-                "Please enter a question."
-            )
+            return "Please enter a question."
 
 
         # ----------------------------------------------------
-        # SHORT INSTRUCTION
+        # SHORT PROMPT
         # ----------------------------------------------------
 
         instruction = f"""
-Answer the user's question about the uploaded image.
+Answer the question about this image.
 
-Use the image as the primary source.
-
-Use OCR when the question asks about written text.
-Use object detections when useful.
-
-Do not guess.
-If something is not visible, say that it is not clearly visible.
-Give only a concise answer.
+Look carefully at the image.
+Use OCR text when useful.
+Use detected objects when useful.
+Answer only what can be determined from the image.
+Do not invent information.
+Keep the answer short.
 
 OCR:
 {ocr_context}
 
-Detected objects:
+Objects:
 {yolo_context}
 
 Question:
@@ -235,7 +262,7 @@ Question:
 
 
         # ----------------------------------------------------
-        # PROCESS IMAGE + TEXT
+        # PROCESS IMAGE
         # ----------------------------------------------------
 
         inputs = processor(
@@ -246,7 +273,7 @@ Question:
 
 
         # ----------------------------------------------------
-        # MOVE TO CPU/GPU
+        # MOVE TO DEVICE
         # ----------------------------------------------------
 
         inputs = {
@@ -258,27 +285,26 @@ Question:
 
 
         # ----------------------------------------------------
-        # GENERATE ANSWER
+        # GENERATE
         # ----------------------------------------------------
 
         with torch.inference_mode():
 
             output = model.generate(
                 **inputs,
-                max_new_tokens=40,
+                max_new_tokens=20,
                 do_sample=False
             )
 
 
         # ----------------------------------------------------
-        # ONLY NEW TOKENS
+        # REMOVE INPUT TOKENS
         # ----------------------------------------------------
 
         if "input_ids" in inputs:
 
             input_length = (
-                inputs["input_ids"]
-                .shape[1]
+                inputs["input_ids"].shape[1]
             )
 
             generated_tokens = (
@@ -312,10 +338,9 @@ Question:
         if not answer:
 
             return (
-                "The information is not clearly "
+                "The answer is not clearly "
                 "visible in the image."
             )
-
 
         return answer
 
@@ -345,13 +370,9 @@ def answer_question(
         question
     ).strip()
 
-
     if not question:
 
-        return (
-            "Please enter a question."
-        )
-
+        return "Please enter a question."
 
     answer = ask_vlm(
         image,
@@ -360,11 +381,9 @@ def answer_question(
         detections
     )
 
-
     if answer:
 
         return answer
-
 
     return (
         "I could not determine a reliable "
