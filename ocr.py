@@ -3,16 +3,24 @@ import numpy as np
 import cv2
 from PIL import Image
 
-
 # ============================================================
-# EASY OCR MODEL
+# EASY OCR MODEL - LAZY LOADING
 # ============================================================
 
-reader = easyocr.Reader(
-    ['en'],
-    gpu=False,
-    verbose=False
-)
+reader = None
+
+
+def get_reader():
+    global reader
+
+    if reader is None:
+        reader = easyocr.Reader(
+            ["en"],
+            gpu=False,
+            verbose=False
+        )
+
+    return reader
 
 
 # ============================================================
@@ -43,16 +51,15 @@ def prepare_image(image):
         cv2.COLOR_BGR2GRAY
     )
 
-    # Upscale image
+    # Upscale smaller images
     height, width = gray.shape
 
     if width < 1600:
-        scale = 2
         gray = cv2.resize(
             gray,
             None,
-            fx=scale,
-            fy=scale,
+            fx=2,
+            fy=2,
             interpolation=cv2.INTER_CUBIC
         )
 
@@ -71,7 +78,7 @@ def prepare_image(image):
         0
     )
 
-    # Convert back to RGB
+    # Grayscale -> RGB
     enhanced = cv2.cvtColor(
         enhanced,
         cv2.COLOR_GRAY2RGB
@@ -81,7 +88,7 @@ def prepare_image(image):
 
 
 # ============================================================
-# OCR
+# OCR TEXT EXTRACTION
 # ============================================================
 
 def extract_text(image):
@@ -89,7 +96,13 @@ def extract_text(image):
     try:
 
         # ----------------------------------------------------
-        # Convert input
+        # Load EasyOCR only when OCR is actually needed
+        # ----------------------------------------------------
+
+        reader_model = get_reader()
+
+        # ----------------------------------------------------
+        # Convert input image
         # ----------------------------------------------------
 
         if isinstance(image, Image.Image):
@@ -108,7 +121,6 @@ def extract_text(image):
                 "Unsupported image format."
             )
 
-
         # ----------------------------------------------------
         # Prepare enhanced image
         # ----------------------------------------------------
@@ -117,12 +129,11 @@ def extract_text(image):
             original
         )
 
-
         # ----------------------------------------------------
-        # OCR on original image
+        # OCR original image
         # ----------------------------------------------------
 
-        original_results = reader.readtext(
+        original_results = reader_model.readtext(
             original,
             detail=1,
             paragraph=False,
@@ -132,12 +143,11 @@ def extract_text(image):
             mag_ratio=1.5
         )
 
-
         # ----------------------------------------------------
-        # OCR on enhanced image
+        # OCR enhanced image
         # ----------------------------------------------------
 
-        enhanced_results = reader.readtext(
+        enhanced_results = reader_model.readtext(
             enhanced,
             detail=1,
             paragraph=False,
@@ -147,14 +157,13 @@ def extract_text(image):
             mag_ratio=1.5
         )
 
-
         # ----------------------------------------------------
-        # Collect text
+        # Collect results
         # ----------------------------------------------------
 
         texts = []
 
-        for result in original_results:
+        for result in original_results + enhanced_results:
 
             if len(result) >= 3:
 
@@ -166,44 +175,22 @@ def extract_text(image):
                     result[2]
                 )
 
-                if detected_text and confidence >= 0.35:
-
+                if (
+                    detected_text
+                    and confidence >= 0.35
+                ):
                     texts.append(
                         (
                             detected_text,
                             confidence
                         )
                     )
-
-
-        for result in enhanced_results:
-
-            if len(result) >= 3:
-
-                detected_text = str(
-                    result[1]
-                ).strip()
-
-                confidence = float(
-                    result[2]
-                )
-
-                if detected_text and confidence >= 0.35:
-
-                    texts.append(
-                        (
-                            detected_text,
-                            confidence
-                        )
-                    )
-
 
         # ----------------------------------------------------
-        # Remove duplicate detections
+        # Remove duplicates
         # ----------------------------------------------------
 
         final_text = []
-
         seen = set()
 
         for text, confidence in texts:
@@ -218,17 +205,13 @@ def extract_text(image):
                     text
                 )
 
-
         # ----------------------------------------------------
         # Final text
         # ----------------------------------------------------
 
-        text = "\n".join(
+        return "\n".join(
             final_text
-        )
-
-        return text.strip()
-
+        ).strip()
 
     except Exception as e:
 
