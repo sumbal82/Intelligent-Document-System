@@ -4,3 +4,4 @@ numpy==1.26.4
 Pillow
 easyocr
 ultralytics
+transformers
