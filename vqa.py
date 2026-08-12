@@ -1,52 +1,46 @@
-import torch
-from PIL import Image
 from transformers import (
     AutoProcessor,
     AutoModelForImageTextToText
 )
 
+from PIL import Image
+
+import torch
+import streamlit as st
+
 
 # ============================================================
-# MODEL SETTINGS
+# MODEL NAME
 # ============================================================
 
 MODEL_NAME = "HuggingFaceTB/SmolVLM-256M-Instruct"
 
-_device = None
-_processor = None
-_model = None
-
 
 # ============================================================
-# LOAD MODEL ONLY ONCE
+# LOAD MODEL ONLY WHEN NEEDED
 # ============================================================
 
-def get_model():
+@st.cache_resource
+def load_vlm():
 
-    global _device
-    global _processor
-    global _model
+    device = (
+        "cuda"
+        if torch.cuda.is_available()
+        else "cpu"
+    )
 
-    if _model is None:
+    processor = AutoProcessor.from_pretrained(
+        MODEL_NAME
+    )
 
-        _device = (
-            "cuda"
-            if torch.cuda.is_available()
-            else "cpu"
-        )
+    model = AutoModelForImageTextToText.from_pretrained(
+        MODEL_NAME
+    )
 
-        _processor = AutoProcessor.from_pretrained(
-            MODEL_NAME
-        )
+    model.to(device)
+    model.eval()
 
-        _model = AutoModelForImageTextToText.from_pretrained(
-            MODEL_NAME
-        )
-
-        _model = _model.to(_device)
-        _model.eval()
-
-    return _processor, _model, _device
+    return processor, model, device
 
 
 # ============================================================
@@ -63,13 +57,24 @@ def prepare_vlm_image(image):
 
     if max(width, height) > max_size:
 
-        scale = max_size / max(width, height)
+        scale = max_size / max(
+            width,
+            height
+        )
 
-        new_width = int(width * scale)
-        new_height = int(height * scale)
+        new_width = int(
+            width * scale
+        )
+
+        new_height = int(
+            height * scale
+        )
 
         image = image.resize(
-            (new_width, new_height),
+            (
+                new_width,
+                new_height
+            ),
             Image.Resampling.LANCZOS
         )
 
@@ -77,7 +82,7 @@ def prepare_vlm_image(image):
 
 
 # ============================================================
-# FORMAT YOLO DETECTIONS
+# YOLO CONTEXT
 # ============================================================
 
 def format_detections(detections):
@@ -90,7 +95,10 @@ def format_detections(detections):
     for obj in detections:
 
         name = str(
-            obj.get("class", "Unknown")
+            obj.get(
+                "class",
+                "Unknown"
+            )
         )
 
         confidence = obj.get(
@@ -99,12 +107,15 @@ def format_detections(detections):
         )
 
         try:
-            confidence = float(confidence)
+            confidence = float(
+                confidence
+            )
         except Exception:
             confidence = 0.0
 
         lines.append(
-            f"- {name} ({confidence:.2f})"
+            f"- {name} "
+            f"({confidence:.2f})"
         )
 
     return "\n".join(lines)
@@ -119,7 +130,9 @@ def clean_answer(answer):
     if not answer:
         return ""
 
-    answer = str(answer).strip()
+    answer = str(
+        answer
+    ).strip()
 
     prefixes = [
         "Assistant:",
@@ -153,12 +166,6 @@ def ask_vlm(
     try:
 
         # ----------------------------------------------------
-        # MODEL
-        # ----------------------------------------------------
-
-        processor, model, device = get_model()
-
-        # ----------------------------------------------------
         # IMAGE
         # ----------------------------------------------------
 
@@ -168,7 +175,10 @@ def ask_vlm(
                 image
             ).convert("RGB")
 
-        elif isinstance(image, Image.Image):
+        elif isinstance(
+            image,
+            Image.Image
+        ):
 
             image = image.convert("RGB")
 
@@ -176,42 +186,29 @@ def ask_vlm(
 
             return None
 
-        image = prepare_vlm_image(image)
-
-        # ----------------------------------------------------
-        # QUESTION
-        # ----------------------------------------------------
-
-        question = str(
-            question
-        ).strip()
-
-        if not question:
-
-            return "Please enter a question."
+        image = prepare_vlm_image(
+            image
+        )
 
         # ----------------------------------------------------
         # OCR CONTEXT
         # ----------------------------------------------------
 
-        if document_text:
+        ocr_context = str(
+            document_text or ""
+        ).strip()
 
-            ocr_context = str(
-                document_text
-            ).strip()
-
-            # Prevent huge prompts
-            if len(ocr_context) > 4000:
-
-                ocr_context = (
-                    ocr_context[:4000]
-                    + "..."
-                )
-
-        else:
+        if not ocr_context:
 
             ocr_context = (
                 "No readable text was detected."
+            )
+
+        elif len(ocr_context) > 2500:
+
+            ocr_context = (
+                ocr_context[:2500]
+                + "..."
             )
 
         # ----------------------------------------------------
@@ -223,27 +220,49 @@ def ask_vlm(
         )
 
         # ----------------------------------------------------
-        # INSTRUCTION
+        # QUESTION
+        # ----------------------------------------------------
+
+        question = str(
+            question or ""
+        ).strip()
+
+        if not question:
+
+            return (
+                "Please enter a question."
+            )
+
+        # ----------------------------------------------------
+        # LOAD MODEL HERE
+        # NOT WHEN APP STARTS
+        # ----------------------------------------------------
+
+        processor, model, device = (
+            load_vlm()
+        )
+
+        # ----------------------------------------------------
+        # PROMPT
         # ----------------------------------------------------
 
         instruction = f"""
-Answer the user's question about the uploaded image.
+Answer the question about this image.
 
-Rules:
-1. Look carefully at the image.
-2. Use the OCR text when the question is about written text.
-3. Use the detected objects when useful.
-4. Do not invent information.
-5. If the answer cannot be determined from the image, say so.
-6. Give a short and direct answer.
+Look carefully at the image.
+Use the OCR text when useful.
+Use detected objects when useful.
+Do not invent information.
+If the answer cannot be determined from the image,
+say that it is not clearly visible.
 
-OCR TEXT:
+OCR:
 {ocr_context}
 
-DETECTED OBJECTS:
+Detected objects:
 {yolo_context}
 
-QUESTION:
+Question:
 {question}
 """
 
@@ -305,19 +324,23 @@ QUESTION:
             )
 
         # ----------------------------------------------------
-        # REMOVE PROMPT TOKENS
+        # REMOVE INPUT TOKENS
         # ----------------------------------------------------
 
         if "input_ids" in inputs:
 
             input_length = (
-                inputs["input_ids"].shape[1]
+                inputs[
+                    "input_ids"
+                ].shape[1]
             )
 
-            generated_tokens = output[
-                :,
-                input_length:
-            ]
+            generated_tokens = (
+                output[
+                    :,
+                    input_length:
+                ]
+            )
 
         else:
 
@@ -348,7 +371,7 @@ QUESTION:
     except Exception as error:
 
         print(
-            "SmolVLM error:",
+            "VQA error:",
             error
         )
 
@@ -367,12 +390,14 @@ def answer_question(
 ):
 
     question = str(
-        question
+        question or ""
     ).strip()
 
     if not question:
 
-        return "Please enter a question."
+        return (
+            "Please enter a question."
+        )
 
     answer = ask_vlm(
         image,
