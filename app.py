@@ -1,3 +1,4 @@
+```python
 import streamlit as st
 import os
 import cv2
@@ -18,7 +19,7 @@ st.title("📄 Intelligent Document Understanding System")
 
 st.write(
     "Upload any image, extract text, detect objects, "
-    "and ask any question about the image."
+    "and ask questions about the image."
 )
 
 
@@ -26,23 +27,19 @@ st.write(
 # SESSION STATE
 # ============================================================
 
-if "processed" not in st.session_state:
-    st.session_state.processed = False
+defaults = {
+    "processed": False,
+    "text": "",
+    "detections": [],
+    "image_path": "",
+    "detection_image": None,
+    "chat_history": [],
+    "uploaded_file_id": None,
+}
 
-if "text" not in st.session_state:
-    st.session_state.text = ""
-
-if "detections" not in st.session_state:
-    st.session_state.detections = []
-
-if "image_path" not in st.session_state:
-    st.session_state.image_path = ""
-
-if "detection_image" not in st.session_state:
-    st.session_state.detection_image = None
-
-if "chat_history" not in st.session_state:
-    st.session_state.chat_history = []
+for key, value in defaults.items():
+    if key not in st.session_state:
+        st.session_state[key] = value
 
 
 # ============================================================
@@ -57,16 +54,53 @@ uploaded_file = st.file_uploader(
 )
 
 
+# ============================================================
+# RESET WHEN A NEW IMAGE IS UPLOADED
+# ============================================================
+
 if uploaded_file is not None:
+
+    # Create a unique ID for the uploaded file
+    current_file_id = (
+        f"{uploaded_file.name}_"
+        f"{uploaded_file.size}"
+    )
+
+    # Detect NEW image
+    if (
+        st.session_state.uploaded_file_id
+        != current_file_id
+    ):
+
+        # Reset all previous results
+        st.session_state.processed = False
+        st.session_state.text = ""
+        st.session_state.detections = []
+        st.session_state.image_path = ""
+        st.session_state.detection_image = None
+        st.session_state.chat_history = []
+
+        # Save new file ID
+        st.session_state.uploaded_file_id = (
+            current_file_id
+        )
+
+
+    # ========================================================
+    # SAVE IMAGE
+    # ========================================================
 
     os.makedirs("input", exist_ok=True)
 
-    # Get original extension
     extension = os.path.splitext(
         uploaded_file.name
     )[1].lower()
 
-    if extension not in [".jpg", ".jpeg", ".png"]:
+    if extension not in [
+        ".jpg",
+        ".jpeg",
+        ".png"
+    ]:
         extension = ".jpg"
 
     image_path = os.path.join(
@@ -74,34 +108,45 @@ if uploaded_file is not None:
         "test" + extension
     )
 
-    # Save image
-    with open(image_path, "wb") as file:
-        file.write(uploaded_file.getbuffer())
+    with open(
+        image_path,
+        "wb"
+    ) as file:
+
+        file.write(
+            uploaded_file.getbuffer()
+        )
 
     st.session_state.image_path = image_path
 
-    # Display directly from uploaded file
+
+    # ========================================================
+    # DISPLAY IMAGE
+    # ========================================================
+
     uploaded_file.seek(0)
 
     st.image(
         uploaded_file,
         caption="Uploaded Image",
-        use_container_width=True
+        width="stretch"
     )
 
-    st.success("✅ Image uploaded successfully")
+    st.success(
+        "✅ Image uploaded successfully"
+    )
 
 
     # ========================================================
-    # PROCESS IMAGE BUTTON
+    # PROCESS IMAGE
     # ========================================================
 
     if st.button(
         "🚀 Process Image",
-        use_container_width=True
+        width="stretch"
     ):
 
-        # Reset previous results
+        # Reset results before processing
         st.session_state.processed = False
         st.session_state.text = ""
         st.session_state.detections = []
@@ -115,15 +160,18 @@ if uploaded_file is not None:
 
         try:
 
-            # Load only when needed
-            from preprocessing import preprocess_image
+            from preprocessing import (
+                preprocess_image
+            )
 
             with st.spinner(
                 "🔄 Preprocessing image..."
             ):
 
-                processed_image = preprocess_image(
-                    image_path
+                processed_image = (
+                    preprocess_image(
+                        image_path
+                    )
                 )
 
                 processed_path = os.path.join(
@@ -138,7 +186,7 @@ if uploaded_file is not None:
             st.image(
                 processed_image,
                 caption="Preprocessed Image",
-                use_container_width=True
+                width="stretch"
             )
 
             st.success(
@@ -161,7 +209,6 @@ if uploaded_file is not None:
 
         try:
 
-            # Load EasyOCR module only when needed
             from ocr import extract_text
 
             with st.spinner(
@@ -186,8 +233,10 @@ if uploaded_file is not None:
                     image
                 )
 
-                extracted_text = extract_text(
-                    pil_image
+                extracted_text = (
+                    extract_text(
+                        pil_image
+                    )
                 )
 
             if extracted_text is None:
@@ -228,21 +277,26 @@ if uploaded_file is not None:
 
         try:
 
-            # Load YOLO only when needed
-            from detection import detect_objects
+            from detection import (
+                detect_objects
+            )
 
             with st.spinner(
                 "🔍 Detecting objects using YOLO..."
             ):
 
-                detections, annotated_image = detect_objects(
-                    image_path
+                detections, annotated_image = (
+                    detect_objects(
+                        image_path
+                    )
                 )
 
             if detections is None:
                 detections = []
 
-            st.session_state.detections = detections
+            st.session_state.detections = (
+                detections
+            )
 
             if annotated_image is not None:
 
@@ -275,7 +329,7 @@ if uploaded_file is not None:
 
 
         # ====================================================
-        # PROCESSING COMPLETE
+        # COMPLETE
         # ====================================================
 
         st.session_state.processed = True
@@ -357,7 +411,7 @@ if st.session_state.processed:
 
 
     # ========================================================
-    # YOLO DETECTION IMAGE
+    # YOLO IMAGE
     # ========================================================
 
     if st.session_state.detection_image:
@@ -369,7 +423,7 @@ if st.session_state.processed:
         st.image(
             st.session_state.detection_image,
             caption="Detected Objects",
-            use_container_width=True
+            width="stretch"
         )
 
 
@@ -410,7 +464,7 @@ if st.session_state.processed:
 
 
     # ========================================================
-    # QUESTION INPUT
+    # QUESTION FORM
     # ========================================================
 
     with st.form(
@@ -425,7 +479,7 @@ if st.session_state.processed:
 
         ask_button = st.form_submit_button(
             "🔎 Ask Question",
-            use_container_width=True
+            width="stretch"
         )
 
 
@@ -515,7 +569,9 @@ if st.session_state.processed:
 
                         names = []
 
-                        for obj in st.session_state.detections:
+                        for obj in (
+                            st.session_state.detections
+                        ):
 
                             name = str(
                                 obj.get(
@@ -541,7 +597,7 @@ if st.session_state.processed:
 
 
                 # =================================================
-                # FAST OBJECT COUNT
+                # OBJECT COUNT
                 # =================================================
 
                 elif (
@@ -558,7 +614,7 @@ if st.session_state.processed:
 
 
                 # =================================================
-                # FAST TEXT CHECK
+                # TEXT CHECK
                 # =================================================
 
                 elif (
@@ -588,8 +644,6 @@ if st.session_state.processed:
 
                 else:
 
-                    # Load VQA only when a general
-                    # visual question is actually asked
                     from vqa import answer_question
 
                     with st.spinner(
@@ -647,3 +701,4 @@ if st.session_state.processed:
                     "❌ Question answering failed: "
                     + str(error)
                 )
+```
