@@ -1,5 +1,4 @@
 import cv2
-import numpy as np
 import easyocr
 
 
@@ -21,16 +20,16 @@ def get_reader():
 
 def preprocess_for_ocr(image):
     """
-    Image -> grayscale -> denoise -> contrast enhancement
+    Preprocess image for better OCR.
     """
 
     if image is None:
         raise ValueError("Image is empty")
 
-    # BGR image
+    # Convert BGR to grayscale
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
 
-    # Remove small noise
+    # Remove noise
     gray = cv2.fastNlMeansDenoising(
         gray,
         None,
@@ -39,7 +38,7 @@ def preprocess_for_ocr(image):
         searchWindowSize=21
     )
 
-    # Improve local contrast
+    # Improve contrast
     clahe = cv2.createCLAHE(
         clipLimit=2.0,
         tileGridSize=(8, 8)
@@ -52,12 +51,15 @@ def preprocess_for_ocr(image):
 
 def extract_text(image):
     """
-    Extract text from an image.
+    Extract text from image.
 
     Returns:
-        text: complete OCR text
-        results: detailed OCR detections
+        text: complete extracted text
+        results: detailed OCR results
     """
+
+    if image is None:
+        raise ValueError("Image is empty")
 
     processed = preprocess_for_ocr(image)
 
@@ -74,11 +76,12 @@ def extract_text(image):
     text_lines = []
 
     for item in results:
+
         if len(item) >= 3:
+
             detected_text = str(item[1]).strip()
             confidence = float(item[2])
 
-            # Ignore extremely weak detections
             if detected_text and confidence >= 0.20:
                 text_lines.append(detected_text)
 
