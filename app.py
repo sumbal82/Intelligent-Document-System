@@ -9,9 +9,9 @@ from detection import detect_objects
 from vqa import answer_question
 
 
-# ---------------------------------------------------------
+# ============================================================
 # PAGE CONFIG
-# ---------------------------------------------------------
+# ============================================================
 
 st.set_page_config(
     page_title="Intelligent Document Understanding System",
@@ -27,9 +27,9 @@ st.write(
 )
 
 
-# ---------------------------------------------------------
+# ============================================================
 # SESSION STATE
-# ---------------------------------------------------------
+# ============================================================
 
 if "processed" not in st.session_state:
     st.session_state.processed = False
@@ -50,9 +50,9 @@ if "chat_history" not in st.session_state:
     st.session_state.chat_history = []
 
 
-# ---------------------------------------------------------
+# ============================================================
 # UPLOAD IMAGE
-# ---------------------------------------------------------
+# ============================================================
 
 st.header("📤 Upload Document / Image")
 
@@ -84,16 +84,16 @@ if uploaded_file is not None:
     st.success("✅ Image uploaded successfully")
 
 
-    # -----------------------------------------------------
-    # PROCESS BUTTON
-    # -----------------------------------------------------
+    # ========================================================
+    # PROCESS IMAGE
+    # ========================================================
 
     if st.button(
         "🚀 Process Image",
         use_container_width=True
     ):
 
-        # Reset previous results
+        # Reset old results
         st.session_state.processed = False
         st.session_state.text = ""
         st.session_state.detections = []
@@ -101,9 +101,9 @@ if uploaded_file is not None:
         st.session_state.chat_history = []
 
 
-        # -------------------------------------------------
+        # ====================================================
         # PREPROCESSING
-        # -------------------------------------------------
+        # ====================================================
 
         try:
 
@@ -124,14 +124,14 @@ if uploaded_file is not None:
                     processed_path
                 )
 
-            st.success(
-                "✅ Preprocessing completed"
-            )
-
             st.image(
                 processed_image,
                 caption="Preprocessed Image",
                 use_container_width=True
+            )
+
+            st.success(
+                "✅ Preprocessing completed"
             )
 
         except Exception as error:
@@ -144,9 +144,9 @@ if uploaded_file is not None:
             st.stop()
 
 
-        # -------------------------------------------------
-        # OCR - EASY OCR
-        # -------------------------------------------------
+        # ====================================================
+        # OCR
+        # ====================================================
 
         try:
 
@@ -183,8 +183,7 @@ if uploaded_file is not None:
                 extracted_text
             ).strip()
 
-
-            # Save extracted text
+            # Save OCR text
             with open(
                 "input/extracted_text.txt",
                 "w",
@@ -194,7 +193,6 @@ if uploaded_file is not None:
                 file.write(
                     st.session_state.text
                 )
-
 
             st.success(
                 "✅ EasyOCR text extraction completed"
@@ -210,14 +208,14 @@ if uploaded_file is not None:
             st.stop()
 
 
-        # -------------------------------------------------
+        # ====================================================
         # YOLO OBJECT DETECTION
-        # -------------------------------------------------
+        # ====================================================
 
         try:
 
             with st.spinner(
-                "🔍 Detecting objects using YOLOv8..."
+                "🔍 Detecting objects using YOLO..."
             ):
 
                 detections, annotated_image = detect_objects(
@@ -228,7 +226,6 @@ if uploaded_file is not None:
                 detections = []
 
             st.session_state.detections = detections
-
 
             if annotated_image is not None:
 
@@ -246,9 +243,8 @@ if uploaded_file is not None:
                     output_path
                 )
 
-
             st.success(
-                "✅ YOLOv8 object detection completed"
+                "✅ YOLO object detection completed"
             )
 
         except Exception as error:
@@ -261,9 +257,9 @@ if uploaded_file is not None:
             st.stop()
 
 
-        # -------------------------------------------------
+        # ====================================================
         # PROCESSING COMPLETE
-        # -------------------------------------------------
+        # ====================================================
 
         st.session_state.processed = True
 
@@ -272,18 +268,18 @@ if uploaded_file is not None:
         )
 
 
-# ---------------------------------------------------------
+# ============================================================
 # RESULTS
-# ---------------------------------------------------------
+# ============================================================
 
 if st.session_state.processed:
 
     st.divider()
 
 
-    # -----------------------------------------------------
+    # ========================================================
     # EXTRACTED TEXT
-    # -----------------------------------------------------
+    # ========================================================
 
     st.header("📄 Extracted Text")
 
@@ -302,9 +298,9 @@ if st.session_state.processed:
         )
 
 
-    # -----------------------------------------------------
-    # YOLO OBJECTS
-    # -----------------------------------------------------
+    # ========================================================
+    # DETECTED OBJECTS
+    # ========================================================
 
     st.header("🔍 Detected Objects")
 
@@ -332,7 +328,6 @@ if st.session_state.processed:
 
                 confidence = 0.0
 
-
             st.write(
                 f"**{name}** — "
                 f"Confidence: {confidence:.2f}"
@@ -345,9 +340,9 @@ if st.session_state.processed:
         )
 
 
-    # -----------------------------------------------------
+    # ========================================================
     # YOLO IMAGE
-    # -----------------------------------------------------
+    # ========================================================
 
     if st.session_state.detection_image:
 
@@ -362,9 +357,9 @@ if st.session_state.processed:
         )
 
 
-    # -----------------------------------------------------
+    # ========================================================
     # CHATBOT
-    # -----------------------------------------------------
+    # ========================================================
 
     st.divider()
 
@@ -373,28 +368,23 @@ if st.session_state.processed:
     )
 
     st.info(
-        "Ask ANY question about the uploaded image. "
-        "Questions are not predefined."
+        "Ask any question about the uploaded image."
     )
 
 
-    # -----------------------------------------------------
+    # ========================================================
     # CHAT HISTORY
-    # -----------------------------------------------------
+    # ========================================================
 
     for chat in st.session_state.chat_history:
 
-        st.markdown(
-            "### ❓ Question"
-        )
+        st.markdown("### ❓ Question")
 
         st.write(
             chat["question"]
         )
 
-        st.markdown(
-            "### 💡 Answer"
-        )
+        st.markdown("### 💡 Answer")
 
         st.write(
             chat["answer"]
@@ -403,9 +393,9 @@ if st.session_state.processed:
         st.divider()
 
 
-    # -----------------------------------------------------
+    # ========================================================
     # QUESTION INPUT
-    # -----------------------------------------------------
+    # ========================================================
 
     with st.form(
         "question_form",
@@ -423,9 +413,9 @@ if st.session_state.processed:
         )
 
 
-    # -----------------------------------------------------
-    # ANSWER QUESTION
-    # -----------------------------------------------------
+    # ========================================================
+    # QUESTION ANSWERING
+    # ========================================================
 
     if ask_button:
 
@@ -441,19 +431,171 @@ if st.session_state.processed:
 
             try:
 
-                with st.spinner(
-                    "🤖 AI is analyzing the image..."
+                q = question.lower().strip()
+
+                # =================================================
+                # FAST OCR QUESTIONS
+                # =================================================
+
+                text_keywords = [
+                    "what text",
+                    "what is written",
+                    "what's written",
+                    "read the text",
+                    "read text",
+                    "text in image",
+                    "text on image",
+                    "written in image",
+                    "written on image",
+                    "what does it say",
+                    "what does the image say",
+                    "extract text",
+                    "show text",
+                    "give me the text"
+                ]
+
+                is_text_question = any(
+                    keyword in q
+                    for keyword in text_keywords
+                )
+
+
+                if is_text_question:
+
+                    if st.session_state.text:
+
+                        answer = (
+                            st.session_state.text
+                        )
+
+                    else:
+
+                        answer = (
+                            "No readable text was "
+                            "detected in the image."
+                        )
+
+
+                # =================================================
+                # FAST OBJECT QUESTIONS
+                # =================================================
+
+                elif any(
+                    keyword in q
+                    for keyword in [
+                        "what objects",
+                        "which objects",
+                        "objects in image",
+                        "objects are detected",
+                        "what is detected",
+                        "what are detected",
+                        "detect objects",
+                        "show detected objects"
+                    ]
                 ):
 
-                    answer = answer_question(
-                        st.session_state.image_path,
-                        question,
-                        document_text=st.session_state.text,
-                        detections=st.session_state.detections
+                    if st.session_state.detections:
+
+                        names = []
+
+                        for obj in st.session_state.detections:
+
+                            name = str(
+                                obj.get(
+                                    "class",
+                                    "Unknown"
+                                )
+                            )
+
+                            if name not in names:
+
+                                names.append(
+                                    name
+                                )
+
+                        answer = (
+                            "Detected objects: "
+                            + ", ".join(names)
+                        )
+
+                    else:
+
+                        answer = (
+                            "No trained objects were "
+                            "detected in the image."
+                        )
+
+
+                # =================================================
+                # FAST OBJECT COUNT
+                # =================================================
+
+                elif (
+                    "how many objects" in q
+                    or "number of objects" in q
+                    or "count objects" in q
+                ):
+
+                    answer = (
+                        f"I detected "
+                        f"{len(st.session_state.detections)} "
+                        f"object(s)."
                     )
 
 
+                # =================================================
+                # FAST EMPTY OCR CHECK
+                # =================================================
+
+                elif (
+                    "is there any text" in q
+                    or "does the image have text" in q
+                    or "does it contain text" in q
+                ):
+
+                    if st.session_state.text:
+
+                        answer = (
+                            "Yes, text was detected "
+                            "in the image."
+                        )
+
+                    else:
+
+                        answer = (
+                            "No readable text was "
+                            "detected in the image."
+                        )
+
+
+                # =================================================
+                # VLM FOR GENERAL VISUAL QUESTIONS
+                # =================================================
+
+                else:
+
+                    with st.spinner(
+                        "🤖 AI is analyzing the image..."
+                    ):
+
+                        answer = answer_question(
+                            st.session_state.image_path,
+                            question,
+                            document_text=(
+                                st.session_state.text
+                            ),
+                            detections=(
+                                st.session_state.detections
+                            )
+                        )
+
+
+                # =================================================
+                # CLEAN ANSWER
+                # =================================================
+
                 if answer is None:
+
                     answer = ""
 
                 answer = str(
@@ -469,13 +611,16 @@ if st.session_state.processed:
                     )
 
 
+                # =================================================
+                # SAVE CHAT
+                # =================================================
+
                 st.session_state.chat_history.append(
                     {
                         "question": question,
                         "answer": answer
                     }
                 )
-
 
                 st.rerun()
 
