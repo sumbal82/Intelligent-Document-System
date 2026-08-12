@@ -1,8 +1,9 @@
-import streamlit as st
+import os
+import tempfile
+
 import cv2
 import numpy as np
-import tempfile
-import os
+import streamlit as st
 
 from preprocessing import preprocess_image
 from ocr import extract_text
@@ -19,6 +20,11 @@ st.set_page_config(
     page_icon="📄",
     layout="wide"
 )
+
+
+# ============================================================
+# PAGE TITLE
+# ============================================================
 
 st.title("📄 Intelligent Document System")
 
@@ -39,12 +45,49 @@ defaults = {
     "ocr_text": "",
     "detections": [],
     "annotated_image": None,
-    "processed": False
+    "processed": False,
+    "ocr_error": None,
+    "detection_error": None
 }
 
 for key, value in defaults.items():
     if key not in st.session_state:
         st.session_state[key] = value
+
+
+# ============================================================
+# IMAGE DISPLAY HELPER
+# ============================================================
+
+def make_display_image(image):
+    """
+    Convert PIL / NumPy image into a clean uint8 RGB array
+    that Streamlit can reliably display.
+    """
+
+    if image is None:
+        return None
+
+    if hasattr(image, "convert"):
+        image = image.convert("RGB")
+        image = np.asarray(image)
+
+    else:
+        image = np.asarray(image)
+
+    if image.dtype != np.uint8:
+        image = np.clip(image, 0, 255).astype(np.uint8)
+
+    if image.ndim == 2:
+        image = cv2.cvtColor(
+            image,
+            cv2.COLOR_GRAY2RGB
+        )
+
+    elif image.ndim == 3 and image.shape[2] == 4:
+        image = image[:, :, :3]
+
+    return np.ascontiguousarray(image)
 
 
 # ============================================================
@@ -74,9 +117,9 @@ if uploaded_file is not None:
         hash(file_bytes)
     )
 
-    # ========================================================
-    # PROCESS ONLY WHEN A NEW IMAGE IS UPLOADED
-    # ========================================================
+    # --------------------------------------------------------
+    # ONLY PROCESS A NEW IMAGE
+    # --------------------------------------------------------
 
     if current_id != st.session_state.image_id:
 
@@ -87,6 +130,8 @@ if uploaded_file is not None:
         st.session_state.detections = []
         st.session_state.annotated_image = None
         st.session_state.processed = False
+        st.session_state.ocr_error = None
+        st.session_state.detection_error = None
 
         temp_path = None
 
@@ -98,7 +143,15 @@ if uploaded_file is not None:
 
             suffix = os.path.splitext(
                 uploaded_file.name
-            )[1]
+            )[1].lower()
+
+            if suffix not in [
+                ".jpg",
+                ".jpeg",
+                ".png",
+                ".webp"
+            ]:
+                suffix = ".jpg"
 
             with tempfile.NamedTemporaryFile(
                 delete=False,
@@ -125,200 +178,252 @@ if uploaded_file is not None:
 
             if image_bgr is None:
                 st.error(
-                    "❌ Could not read the uploaded image."
-                )
-                st.stop()
-
-
-            # =================================================
-            # ORIGINAL IMAGE
-            # =================================================
-
-            image_rgb = cv2.cvtColor(
-                image_bgr,
-                cv2.COLOR_BGR2RGB
-            )
-
-            st.session_state.original_image = image_rgb
-
-
-            # =================================================
-            # STEP 2 — PREPROCESSING
-            # =================================================
-
-            st.header("🔧 Step 2 — Image Preprocessing")
-
-            with st.spinner(
-                "🔧 Preprocessing image..."
-            ):
-
-                processed_pil = preprocess_image(
-                    temp_path
+                    "❌ The uploaded file could not be read as an image."
                 )
 
-            st.session_state.processed_image = (
-                processed_pil
-            )
-
-            st.success(
-                "✅ Image preprocessing completed."
-            )
-
-
-            col1, col2 = st.columns(2)
-
-            with col1:
-
-                st.subheader("Original Image")
-
-                st.image(
-                    st.session_state.original_image,
-                    width="stretch"
-                )
-
-            with col2:
-
-                st.subheader("Preprocessed Image")
-
-                st.image(
-                    processed_pil,
-                    width="stretch"
-                )
-
-
-            # =================================================
-            # STEP 3 — EASY OCR
-            # =================================================
-
-            st.header("📝 Step 3 — Text Extraction")
-
-            with st.spinner(
-                "📝 Extracting text with EasyOCR..."
-            ):
-
-                processed_rgb = np.array(
-                    processed_pil
-                )
-
-                processed_bgr = cv2.cvtColor(
-                    processed_rgb,
-                    cv2.COLOR_RGB2BGR
-                )
-
-                text, _ = extract_text(
-                    processed_bgr
-                )
-
-            st.session_state.ocr_text = (
-                text.strip()
-                if text
-                else ""
-            )
-
-            if st.session_state.ocr_text:
-
-                st.success(
-                    "✅ Text extraction completed."
-                )
-
-                st.text_area(
-                    "Extracted Text",
-                    value=st.session_state.ocr_text,
-                    height=250
-                )
+                st.session_state.processed = False
 
             else:
 
-                st.warning(
-                    "⚠️ No readable text was detected."
-                )
+                # =================================================
+                # ORIGINAL IMAGE
+                # =================================================
 
-
-            # =================================================
-            # STEP 4 — YOLO OBJECT DETECTION
-            # =================================================
-
-            st.header(
-                "🎯 Step 4 — YOLO Object Detection"
-            )
-
-            with st.spinner(
-                "🎯 Detecting objects..."
-            ):
-
-                detections, annotated = (
-                    detect_objects(temp_path)
-                )
-
-            st.session_state.detections = (
-                detections
-            )
-
-            st.session_state.annotated_image = (
-                annotated
-            )
-
-            if annotated is not None:
-
-                annotated_rgb = cv2.cvtColor(
-                    annotated,
+                image_rgb = cv2.cvtColor(
+                    image_bgr,
                     cv2.COLOR_BGR2RGB
                 )
 
-                st.image(
-                    annotated_rgb,
-                    caption="YOLO Detection Result",
-                    width="stretch"
+                image_rgb = make_display_image(
+                    image_rgb
                 )
 
+                st.session_state.original_image = image_rgb
 
-            if detections:
+
+                # =================================================
+                # STEP 2 — PREPROCESSING
+                # =================================================
+
+                st.header(
+                    "🔧 Step 2 — Image Preprocessing"
+                )
+
+                try:
+
+                    with st.spinner(
+                        "🔧 Preprocessing image..."
+                    ):
+
+                        processed_pil = preprocess_image(
+                            temp_path
+                        )
+
+                    processed_display = make_display_image(
+                        processed_pil
+                    )
+
+                    st.session_state.processed_image = (
+                        processed_display
+                    )
+
+                    st.success(
+                        "✅ Image preprocessing completed."
+                    )
+
+                    col1, col2 = st.columns(2)
+
+                    with col1:
+
+                        st.subheader("Original Image")
+
+                        st.image(
+                            st.session_state.original_image,
+                            width="stretch",
+                            output_format="PNG"
+                        )
+
+                    with col2:
+
+                        st.subheader("Preprocessed Image")
+
+                        st.image(
+                            st.session_state.processed_image,
+                            width="stretch",
+                            output_format="PNG"
+                        )
+
+                except Exception as error:
+
+                    st.error(
+                        "❌ Image preprocessing failed."
+                    )
+
+                    st.exception(error)
+
+                    st.session_state.processed = False
+
+
+                # =================================================
+                # STEP 3 — OCR
+                # =================================================
+
+                st.header(
+                    "📝 Step 3 — Text Extraction"
+                )
+
+                try:
+
+                    with st.spinner(
+                        "📝 Extracting text with EasyOCR..."
+                    ):
+
+                        processed_bgr = cv2.cvtColor(
+                            processed_display,
+                            cv2.COLOR_RGB2BGR
+                        )
+
+                        text, _ = extract_text(
+                            processed_bgr
+                        )
+
+                    st.session_state.ocr_text = (
+                        text.strip()
+                        if text
+                        else ""
+                    )
+
+                    if st.session_state.ocr_text:
+
+                        st.success(
+                            "✅ Text extraction completed."
+                        )
+
+                        st.text_area(
+                            "Extracted Text",
+                            value=st.session_state.ocr_text,
+                            height=250
+                        )
+
+                    else:
+
+                        st.info(
+                            "ℹ️ No readable text was detected."
+                        )
+
+                except Exception as error:
+
+                    # OCR should NOT kill the entire application.
+                    st.session_state.ocr_text = ""
+                    st.session_state.ocr_error = str(error)
+
+                    st.warning(
+                        "⚠️ OCR could not be completed for this image. "
+                        "The other image features can still continue."
+                    )
+
+
+                # =================================================
+                # STEP 4 — YOLO
+                # =================================================
+
+                st.header(
+                    "🎯 Step 4 — YOLO Object Detection"
+                )
+
+                try:
+
+                    with st.spinner(
+                        "🎯 Detecting objects..."
+                    ):
+
+                        detections, annotated = (
+                            detect_objects(temp_path)
+                        )
+
+                    st.session_state.detections = (
+                        detections or []
+                    )
+
+                    st.session_state.annotated_image = (
+                        annotated
+                    )
+
+                    if annotated is not None:
+
+                        annotated_rgb = cv2.cvtColor(
+                            annotated,
+                            cv2.COLOR_BGR2RGB
+                        )
+
+                        annotated_rgb = make_display_image(
+                            annotated_rgb
+                        )
+
+                        st.image(
+                            annotated_rgb,
+                            caption="YOLO Detection Result",
+                            width="stretch",
+                            output_format="PNG"
+                        )
+
+                    if st.session_state.detections:
+
+                        st.success(
+                            f"✅ Detected "
+                            f"{len(st.session_state.detections)} object(s)."
+                        )
+
+                        for item in st.session_state.detections:
+
+                            name = item.get(
+                                "class",
+                                "Unknown"
+                            )
+
+                            confidence = float(
+                                item.get(
+                                    "confidence",
+                                    0
+                                )
+                            )
+
+                            st.write(
+                                f"**{name}** — "
+                                f"{confidence:.1%}"
+                            )
+
+                    else:
+
+                        st.info(
+                            "ℹ️ No objects were detected."
+                        )
+
+                except Exception as error:
+
+                    st.session_state.detections = []
+                    st.session_state.detection_error = str(error)
+
+                    st.warning(
+                        "⚠️ Object detection could not be completed."
+                    )
+
+
+                # =================================================
+                # PROCESSING COMPLETE
+                # =================================================
+
+                st.session_state.processed = True
 
                 st.success(
-                    f"✅ Detected {len(detections)} object(s)."
+                    "🎉 Image processing completed successfully!"
                 )
-
-                for item in detections:
-
-                    name = item.get(
-                        "class",
-                        "Unknown"
-                    )
-
-                    confidence = float(
-                        item.get(
-                            "confidence",
-                            0
-                        )
-                    )
-
-                    st.write(
-                        f"**{name}** — "
-                        f"{confidence:.1%}"
-                    )
-
-            else:
-
-                st.info(
-                    "No objects were detected."
-                )
-
-
-            # =================================================
-            # PROCESSING COMPLETE
-            # =================================================
-
-            st.session_state.processed = True
-
-            st.success(
-                "🎉 Image processing completed successfully!"
-            )
 
 
         except Exception as error:
 
             st.error(
-                "❌ Error while processing image."
+                "❌ Unexpected error while processing the image."
             )
 
             st.exception(error)
@@ -361,15 +466,11 @@ if (
         "Questions are not predefined."
     )
 
-
     question = st.text_input(
         "Your question",
-        placeholder=(
-            "Ask anything about this image..."
-        ),
+        placeholder="Ask anything about this image...",
         key="question_input"
     )
-
 
     if st.button(
         "🤖 Get Answer",
@@ -394,7 +495,6 @@ if (
                     st.session_state.ocr_text,
                     st.session_state.detections
                 )
-
 
             if answer:
 
