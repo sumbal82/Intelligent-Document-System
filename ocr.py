@@ -1,35 +1,29 @@
+
 import cv2
 import easyocr
+import streamlit as st
 
 
-_reader = None
-
-
+@st.cache_resource
 def get_reader():
-    global _reader
 
-    if _reader is None:
-        _reader = easyocr.Reader(
-            ["en"],
-            gpu=False,
-            verbose=False
-        )
-
-    return _reader
+    return easyocr.Reader(
+        ["en"],
+        gpu=False,
+        verbose=True
+    )
 
 
 def preprocess_for_ocr(image):
-    """
-    Preprocess image for better OCR.
-    """
 
     if image is None:
         raise ValueError("Image is empty")
 
-    # Convert BGR to grayscale
-    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    gray = cv2.cvtColor(
+        image,
+        cv2.COLOR_BGR2GRAY
+    )
 
-    # Remove noise
     gray = cv2.fastNlMeansDenoising(
         gray,
         None,
@@ -38,7 +32,6 @@ def preprocess_for_ocr(image):
         searchWindowSize=21
     )
 
-    # Improve contrast
     clahe = cv2.createCLAHE(
         clipLimit=2.0,
         tileGridSize=(8, 8)
@@ -50,16 +43,6 @@ def preprocess_for_ocr(image):
 
 
 def extract_text(image):
-    """
-    Extract text from image.
-
-    Returns:
-        text: complete extracted text
-        results: detailed OCR results
-    """
-
-    if image is None:
-        raise ValueError("Image is empty")
 
     processed = preprocess_for_ocr(image)
 
@@ -79,11 +62,21 @@ def extract_text(image):
 
         if len(item) >= 3:
 
-            detected_text = str(item[1]).strip()
-            confidence = float(item[2])
+            detected_text = str(
+                item[1]
+            ).strip()
 
-            if detected_text and confidence >= 0.20:
-                text_lines.append(detected_text)
+            confidence = float(
+                item[2]
+            )
+
+            if (
+                detected_text
+                and confidence >= 0.20
+            ):
+                text_lines.append(
+                    detected_text
+                )
 
     text = "\n".join(text_lines)
 
