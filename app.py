@@ -1,7 +1,6 @@
 
-import streamlit as st
 import os
-import cv2
+import streamlit as st
 from PIL import Image
 
 
@@ -45,8 +44,8 @@ if "detection_image" not in st.session_state:
 if "chat_history" not in st.session_state:
     st.session_state.chat_history = []
 
-if "uploaded_name" not in st.session_state:
-    st.session_state.uploaded_name = ""
+if "uploaded_id" not in st.session_state:
+    st.session_state.uploaded_id = ""
 
 
 # ============================================================
@@ -67,23 +66,25 @@ uploaded_file = st.file_uploader(
 
 if uploaded_file is not None:
 
-    # Detect a NEW uploaded image
-    if uploaded_file.name != st.session_state.uploaded_name:
+    current_id = (
+        uploaded_file.name
+        + "_"
+        + str(uploaded_file.size)
+    )
 
-        st.session_state.uploaded_name = uploaded_file.name
+    # New image detected
+    if current_id != st.session_state.uploaded_id:
 
-        # Reset everything from previous image
+        st.session_state.uploaded_id = current_id
+
         st.session_state.processed = False
         st.session_state.text = ""
         st.session_state.detections = []
-        st.session_state.image_path = ""
         st.session_state.detection_image = None
         st.session_state.chat_history = []
 
-        # Create input directory
         os.makedirs("input", exist_ok=True)
 
-        # File extension
         extension = os.path.splitext(
             uploaded_file.name
         )[1].lower()
@@ -91,21 +92,17 @@ if uploaded_file is not None:
         if extension not in [".jpg", ".jpeg", ".png"]:
             extension = ".jpg"
 
-        # Give every upload a unique filename
         image_path = os.path.join(
             "input",
-            "uploaded_image" + extension
+            "current_image" + extension
         )
 
-        # Save uploaded image
         with open(image_path, "wb") as file:
-            file.write(uploaded_file.getbuffer())
+            file.write(
+                uploaded_file.getbuffer()
+            )
 
         st.session_state.image_path = image_path
-
-    else:
-
-        image_path = st.session_state.image_path
 
 
     # ========================================================
@@ -127,191 +124,191 @@ if uploaded_file is not None:
     # PROCESS IMAGE
     # ========================================================
 
-    if st.button(
-        "🚀 Process Image",
-        width="stretch"
-    ):
+    if not st.session_state.processed:
 
-        st.session_state.processed = False
-        st.session_state.text = ""
-        st.session_state.detections = []
-        st.session_state.detection_image = None
-        st.session_state.chat_history = []
+        if st.button(
+            "🚀 Process Image",
+            width="stretch"
+        ):
 
-
-        # ====================================================
-        # PREPROCESSING
-        # ====================================================
-
-        try:
-
-            from preprocessing import preprocess_image
-
-            with st.spinner(
-                "🔄 Preprocessing image..."
-            ):
-
-                processed_image = preprocess_image(
-                    image_path
-                )
-
-                processed_path = os.path.join(
-                    "input",
-                    "preprocessed_image.jpg"
-                )
-
-                processed_image.save(
-                    processed_path
-                )
-
-            st.image(
-                processed_image,
-                caption="Preprocessed Image",
-                width="stretch"
+            image_path = (
+                st.session_state.image_path
             )
 
-            st.success(
-                "✅ Preprocessing completed"
-            )
+            # ------------------------------------------------
+            # PREPROCESSING
+            # ------------------------------------------------
 
-        except Exception as error:
+            try:
 
-            st.error(
-                "❌ Preprocessing failed: "
-                + str(error)
-            )
-
-            st.stop()
-
-
-        # ====================================================
-        # OCR
-        # ====================================================
-
-        try:
-
-            from ocr import extract_text
-
-            with st.spinner(
-                "📝 Extracting text using EasyOCR..."
-            ):
-
-                image = cv2.imread(
-                    image_path
+                from preprocessing import (
+                    preprocess_image
                 )
 
-                if image is None:
-                    raise Exception(
-                        "Could not read uploaded image."
+                with st.spinner(
+                    "🔄 Preprocessing image..."
+                ):
+
+                    processed_image = (
+                        preprocess_image(
+                            image_path
+                        )
                     )
 
-                image = cv2.cvtColor(
-                    image,
-                    cv2.COLOR_BGR2RGB
+                    processed_path = os.path.join(
+                        "input",
+                        "preprocessed_current.jpg"
+                    )
+
+                    processed_image.save(
+                        processed_path
+                    )
+
+                st.success(
+                    "✅ Preprocessing completed"
                 )
 
-                pil_image = Image.fromarray(
-                    image
+            except Exception as error:
+
+                st.error(
+                    "❌ Preprocessing failed: "
+                    + str(error)
                 )
 
-                extracted_text = extract_text(
-                    pil_image
+                st.stop()
+
+
+            # ------------------------------------------------
+            # OCR
+            # ------------------------------------------------
+
+            try:
+
+                from ocr import extract_text
+
+                with st.spinner(
+                    "📝 Extracting text..."
+                ):
+
+                    image = Image.open(
+                        image_path
+                    ).convert("RGB")
+
+                    extracted_text = extract_text(
+                        image
+                    )
+
+                if extracted_text is None:
+                    extracted_text = ""
+
+                st.session_state.text = str(
+                    extracted_text
+                ).strip()
+
+                with open(
+                    "input/extracted_text.txt",
+                    "w",
+                    encoding="utf-8"
+                ) as file:
+
+                    file.write(
+                        st.session_state.text
+                    )
+
+                st.success(
+                    "✅ OCR completed"
                 )
 
-            if extracted_text is None:
-                extracted_text = ""
+            except Exception as error:
 
-            st.session_state.text = str(
-                extracted_text
-            ).strip()
-
-            # Save OCR text
-            with open(
-                "input/extracted_text.txt",
-                "w",
-                encoding="utf-8"
-            ) as file:
-
-                file.write(
-                    st.session_state.text
+                st.error(
+                    "❌ OCR failed: "
+                    + str(error)
                 )
+
+                st.stop()
+
+
+            # ------------------------------------------------
+            # YOLO DETECTION
+            # ------------------------------------------------
+
+            try:
+
+                from detection import (
+                    detect_objects
+                )
+
+                with st.spinner(
+                    "🔍 Detecting objects..."
+                ):
+
+                    detections, annotated_image = (
+                        detect_objects(
+                            image_path
+                        )
+                    )
+
+                if detections is None:
+                    detections = []
+
+                st.session_state.detections = (
+                    detections
+                )
+
+                # Save YOLO result
+                if annotated_image is not None:
+
+                    try:
+
+                        output_image = Image.fromarray(
+                            annotated_image
+                        )
+
+                        output_path = os.path.join(
+                            "input",
+                            "detected_current.jpg"
+                        )
+
+                        output_image.save(
+                            output_path
+                        )
+
+                        st.session_state.detection_image = (
+                            output_path
+                        )
+
+                    except Exception:
+
+                        st.session_state.detection_image = (
+                            None
+                        )
+
+                st.success(
+                    "✅ YOLO detection completed"
+                )
+
+            except Exception as error:
+
+                st.error(
+                    "❌ YOLO detection failed: "
+                    + str(error)
+                )
+
+                st.stop()
+
+
+            # ------------------------------------------------
+            # COMPLETE
+            # ------------------------------------------------
+
+            st.session_state.processed = True
 
             st.success(
-                "✅ EasyOCR text extraction completed"
+                "🎉 Image processing completed!"
             )
 
-        except Exception as error:
-
-            st.error(
-                "❌ OCR failed: "
-                + str(error)
-            )
-
-            st.stop()
-
-
-        # ====================================================
-        # YOLO OBJECT DETECTION
-        # ====================================================
-
-        try:
-
-            from detection import detect_objects
-
-            with st.spinner(
-                "🔍 Detecting objects using YOLO..."
-            ):
-
-                detections, annotated_image = detect_objects(
-                    image_path
-                )
-
-            if detections is None:
-                detections = []
-
-            st.session_state.detections = detections
-
-            if annotated_image is not None:
-
-                output_path = os.path.join(
-                    "input",
-                    "detected_image.jpg"
-                )
-
-                cv2.imwrite(
-                    output_path,
-                    annotated_image
-                )
-
-                st.session_state.detection_image = (
-                    output_path
-                )
-
-            st.success(
-                "✅ YOLO object detection completed"
-            )
-
-        except Exception as error:
-
-            st.error(
-                "❌ YOLO detection failed: "
-                + str(error)
-            )
-
-            st.stop()
-
-
-        # ====================================================
-        # COMPLETE
-        # ====================================================
-
-        st.session_state.processed = True
-
-        st.success(
-            "🎉 Image processing completed successfully!"
-        )
-
-        st.rerun()
+            st.rerun()
 
 
 # ============================================================
@@ -321,7 +318,6 @@ if uploaded_file is not None:
 if st.session_state.processed:
 
     st.divider()
-
 
     # ========================================================
     # EXTRACTED TEXT
@@ -339,8 +335,8 @@ if st.session_state.processed:
 
     else:
 
-        st.warning(
-            "⚠️ No readable text was extracted."
+        st.info(
+            "No readable text was detected."
         )
 
 
@@ -381,12 +377,12 @@ if st.session_state.processed:
     else:
 
         st.info(
-            "ℹ️ No trained objects were detected."
+            "No trained objects were detected."
         )
 
 
     # ========================================================
-    # YOLO RESULT IMAGE
+    # YOLO IMAGE
     # ========================================================
 
     if st.session_state.detection_image:
@@ -413,7 +409,7 @@ if st.session_state.processed:
     )
 
     st.info(
-        "Ask any question related to the uploaded image."
+        "Ask any question about the uploaded image."
     )
 
 
@@ -449,7 +445,7 @@ if st.session_state.processed:
 
         question = st.text_input(
             "Ask anything about this image:",
-            placeholder="Example: What is shown in this image?"
+            placeholder="Example: What is shown in the image?"
         )
 
         ask_button = st.form_submit_button(
@@ -459,7 +455,7 @@ if st.session_state.processed:
 
 
     # ========================================================
-    # QUESTION ANSWERING
+    # ANSWER QUESTION
     # ========================================================
 
     if ask_button:
@@ -502,13 +498,10 @@ if st.session_state.processed:
                     "give me the text"
                 ]
 
-                is_text_question = any(
+                if any(
                     keyword in q
                     for keyword in text_keywords
-                )
-
-
-                if is_text_question:
+                ):
 
                     if st.session_state.text:
 
@@ -534,7 +527,6 @@ if st.session_state.processed:
                         "what objects",
                         "which objects",
                         "objects in image",
-                        "objects are detected",
                         "what is detected",
                         "what are detected",
                         "detect objects",
@@ -546,7 +538,9 @@ if st.session_state.processed:
 
                         names = []
 
-                        for obj in st.session_state.detections:
+                        for obj in (
+                            st.session_state.detections
+                        ):
 
                             name = str(
                                 obj.get(
@@ -556,7 +550,10 @@ if st.session_state.processed:
                             )
 
                             if name not in names:
-                                names.append(name)
+
+                                names.append(
+                                    name
+                                )
 
                         answer = (
                             "Detected objects: "
@@ -582,9 +579,13 @@ if st.session_state.processed:
                 ):
 
                     answer = (
-                        f"I detected "
-                        f"{len(st.session_state.detections)} "
-                        f"object(s)."
+                        "I detected "
+                        + str(
+                            len(
+                                st.session_state.detections
+                            )
+                        )
+                        + " object(s)."
                     )
 
 
@@ -638,7 +639,7 @@ if st.session_state.processed:
 
 
                 # =================================================
-                # CLEAN ANSWER
+                # FINAL ANSWER
                 # =================================================
 
                 if answer is None:
