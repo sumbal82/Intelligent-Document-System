@@ -1,5 +1,6 @@
-from ultralytics import YOLO
 import os
+import streamlit as st
+from ultralytics import YOLO
 
 
 # ============================================================
@@ -19,24 +20,15 @@ MODEL_PATH = os.path.join(
 # LOAD MODEL
 # ============================================================
 
-model = None
-
-
+@st.cache_resource
 def get_model():
 
-    global model
+    if not os.path.exists(MODEL_PATH):
+        raise FileNotFoundError(
+            f"YOLO model not found: {MODEL_PATH}"
+        )
 
-    if model is None:
-
-        if not os.path.exists(MODEL_PATH):
-
-            raise FileNotFoundError(
-                f"YOLO model not found: {MODEL_PATH}"
-            )
-
-        model = YOLO(MODEL_PATH)
-
-    return model
+    return YOLO(MODEL_PATH)
 
 
 # ============================================================
@@ -45,25 +37,10 @@ def get_model():
 
 def detect_objects(image):
 
-    """
-    Detect objects from an image.
-
-    image:
-        OpenCV BGR image
-
-    Returns:
-        detections
-        annotated_image
-    """
-
     if image is None:
         raise ValueError("Image is empty.")
 
     yolo_model = get_model()
-
-    # --------------------------------------------------------
-    # Run YOLO
-    # --------------------------------------------------------
 
     results = yolo_model.predict(
         source=image,
@@ -73,10 +50,6 @@ def detect_objects(image):
     )
 
     detections = []
-
-    # --------------------------------------------------------
-    # Read detections
-    # --------------------------------------------------------
 
     if results:
 
@@ -106,21 +79,19 @@ def detect_objects(image):
                         box.xyxy[0].tolist()
                     )
 
-                    detections.append(
-                        {
-                            "class": str(class_name),
-                            "confidence": round(
-                                confidence,
-                                4
-                            ),
-                            "bbox": [
-                                x1,
-                                y1,
-                                x2,
-                                y2
-                            ]
-                        }
-                    )
+                    detections.append({
+                        "class": str(class_name),
+                        "confidence": round(
+                            confidence,
+                            4
+                        ),
+                        "bbox": [
+                            x1,
+                            y1,
+                            x2,
+                            y2
+                        ]
+                    })
 
                 except Exception as error:
 
@@ -128,10 +99,6 @@ def detect_objects(image):
                         "YOLO detection error:",
                         error
                     )
-
-        # ----------------------------------------------------
-        # Annotated image
-        # ----------------------------------------------------
 
         annotated_image = result.plot()
 
