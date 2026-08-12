@@ -61,22 +61,36 @@ uploaded_file = st.file_uploader(
     type=["jpg", "jpeg", "png"]
 )
 
+
 if uploaded_file is not None:
 
     os.makedirs("input", exist_ok=True)
 
+    # Keep original file extension
+    extension = os.path.splitext(
+        uploaded_file.name
+    )[1].lower()
+
+    if extension not in [".jpg", ".jpeg", ".png"]:
+        extension = ".jpg"
+
     image_path = os.path.join(
         "input",
-        "test.jpg"
+        "test" + extension
     )
 
+    # Save uploaded image
     with open(image_path, "wb") as file:
         file.write(uploaded_file.getbuffer())
 
     st.session_state.image_path = image_path
 
+    # Display uploaded image directly
+    # instead of reading it again from disk
+    uploaded_file.seek(0)
+
     st.image(
-        image_path,
+        uploaded_file,
         caption="Uploaded Image",
         use_container_width=True
     )
@@ -93,7 +107,7 @@ if uploaded_file is not None:
         use_container_width=True
     ):
 
-        # Reset old results
+        # Reset previous results
         st.session_state.processed = False
         st.session_state.text = ""
         st.session_state.detections = []
@@ -267,6 +281,8 @@ if uploaded_file is not None:
             "🎉 Image processing completed successfully!"
         )
 
+        st.rerun()
+
 
 # ============================================================
 # RESULTS
@@ -368,7 +384,7 @@ if st.session_state.processed:
     )
 
     st.info(
-        "Ask any question about the uploaded image."
+        "Ask any question related to the uploaded image."
     )
 
 
@@ -432,6 +448,7 @@ if st.session_state.processed:
             try:
 
                 q = question.lower().strip()
+
 
                 # =================================================
                 # FAST OCR QUESTIONS
@@ -544,7 +561,7 @@ if st.session_state.processed:
 
 
                 # =================================================
-                # FAST EMPTY OCR CHECK
+                # FAST TEXT CHECK
                 # =================================================
 
                 elif (
@@ -569,7 +586,7 @@ if st.session_state.processed:
 
 
                 # =================================================
-                # VLM FOR GENERAL VISUAL QUESTIONS
+                # GENERAL VISUAL QUESTIONS
                 # =================================================
 
                 else:
