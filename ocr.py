@@ -1,54 +1,45 @@
-import streamlit as st
-import easyocr
-import numpy as np
 import cv2
-from PIL import Image
+import numpy as np
+import easyocr
 
 
-@st.cache_resource
-def load_ocr():
-    return easyocr.Reader(
-        ['en'],
-        gpu=False,
-        verbose=False
-    )
+_reader = None
 
 
-reader = load_ocr()
+def get_reader():
+    global _reader
 
-
-def prepare_image(image):
-
-    if isinstance(image, Image.Image):
-        image = np.array(image.convert("RGB"))
-
-    if not isinstance(image, np.ndarray):
-        raise ValueError("Invalid image format.")
-
-    if len(image.shape) == 3:
-        image_bgr = cv2.cvtColor(
-            image,
-            cv2.COLOR_RGB2BGR
-        )
-    else:
-        image_bgr = image
-
-    gray = cv2.cvtColor(
-        image_bgr,
-        cv2.COLOR_BGR2GRAY
-    )
-
-    height, width = gray.shape
-
-    if width < 1200:
-        gray = cv2.resize(
-            gray,
-            None,
-            fx=2,
-            fy=2,
-            interpolation=cv2.INTER_CUBIC
+    if _reader is None:
+        _reader = easyocr.Reader(
+            ["en"],
+            gpu=False,
+            verbose=False
         )
 
+    return _reader
+
+
+def preprocess_for_ocr(image):
+    """
+    Image -> grayscale -> denoise -> contrast enhancement
+    """
+
+    if image is None:
+        raise ValueError("Image is empty")
+
+    # BGR image
+    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+
+    # Remove small noise
+    gray = cv2.fastNlMeansDenoising(
+        gray,
+        None,
+        h=10,
+        templateWindowSize=7,
+        searchWindowSize=21
+    )
+
+    # Improve local contrast
     clahe = cv2.createCLAHE(
         clipLimit=2.0,
         tileGridSize=(8, 8)
@@ -56,90 +47,41 @@ def prepare_image(image):
 
     enhanced = clahe.apply(gray)
 
-    enhanced = cv2.GaussianBlur(
-        enhanced,
-        (3, 3),
-        0
-    )
-
-    enhanced = cv2.cvtColor(
-        enhanced,
-        cv2.COLOR_GRAY2RGB
-    )
-
     return enhanced
 
 
 def extract_text(image):
+    """
+    Extract text from an image.
 
-    if isinstance(image, Image.Image):
-        original = np.array(
-            image.convert("RGB")
-        )
+    Returns:
+        text: complete OCR text
+        results: detailed OCR detections
+    """
 
-    elif isinstance(image, np.ndarray):
-        original = image
+    processed = preprocess_for_ocr(image)
 
-    else:
-        raise ValueError(
-            "Unsupported image format."
-        )
+    reader = get_reader()
 
-    enhanced = prepare_image(original)
-
-    original_results = reader.readtext(
-        original,
+    results = reader.readtext(
+        processed,
         detail=1,
         paragraph=False,
-        text_threshold=0.6,
-        low_text=0.3,
-        link_threshold=0.4,
-        mag_ratio=1.2
+        width_ths=0.7,
+        mag_ratio=1.5
     )
 
-    enhanced_results = reader.readtext(
-        enhanced,
-        detail=1,
-        paragraph=False,
-        text_threshold=0.6,
-        low_text=0.3,
-        link_threshold=0.4,
-        mag_ratio=1.2
-    )
+    text_lines = []
 
-    texts = []
+    for item in results:
+        if len(item) >= 3:
+            detected_text = str(item[1]).strip()
+            confidence = float(item[2])
 
-    for result in original_results + enhanced_results:
+            # Ignore extremely weak detections
+            if detected_text and confidence >= 0.20:
+                text_lines.append(detected_text)
 
-        if len(result) < 3:
-            continue
+    text = "\n".join(text_lines)
 
-        detected_text = str(
-            result[1]
-        ).strip()
-
-        try:
-            confidence = float(result[2])
-        except Exception:
-            confidence = 0.0
-
-        if detected_text and confidence >= 0.40:
-            texts.append(
-                (
-                    detected_text,
-                    confidence
-                )
-            )
-
-    final_text = []
-    seen = set()
-
-    for text, confidence in texts:
-
-        key = text.lower().strip()
-
-        if key not in seen:
-            seen.add(key)
-            final_text.append(text)
-
-    return "\n".join(final_text).strip()
+    return text, results
