@@ -1,109 +1,113 @@
-import os
-import streamlit as st
 from ultralytics import YOLO
+from PIL import Image, ImageDraw
+import os
 
 
-# ============================================================
-# MODEL PATH
-# ============================================================
-
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+# =========================================================
+# YOLO MODEL PATH
+# =========================================================
 
 MODEL_PATH = os.path.join(
-    BASE_DIR,
-    "models",
+    os.path.dirname(__file__),
+    "model",
     "best.pt"
 )
 
 
-# ============================================================
+# =========================================================
 # LOAD MODEL
-# ============================================================
+# =========================================================
 
-@st.cache_resource
-def get_model():
+print("Loading YOLO model...")
 
-    if not os.path.exists(MODEL_PATH):
-        raise FileNotFoundError(
-            f"YOLO model not found: {MODEL_PATH}"
-        )
+if not os.path.exists(MODEL_PATH):
+    raise FileNotFoundError(
+        f"YOLO model not found: {MODEL_PATH}"
+    )
 
-    return YOLO(MODEL_PATH)
+model = YOLO(MODEL_PATH)
+
+print("YOLO model loaded successfully.")
 
 
-# ============================================================
+# =========================================================
 # OBJECT DETECTION
-# ============================================================
+# =========================================================
 
-def detect_objects(image):
+def detect_objects(image, confidence=0.10):
 
-    if image is None:
-        raise ValueError("Image is empty.")
+    # Make sure input is a PIL RGB image
+    if not isinstance(image, Image.Image):
+        image = Image.fromarray(image)
 
-    yolo_model = get_model()
+    image = image.convert("RGB")
 
-    results = yolo_model.predict(
+    # Run YOLO
+    results = model.predict(
         source=image,
-        conf=0.25,
-        iou=0.45,
+        conf=confidence,
         verbose=False
     )
 
     detections = []
 
-    if results:
+    # Copy image for drawing
+    annotated_image = image.copy()
 
-        result = results[0]
+    draw = ImageDraw.Draw(annotated_image)
 
-        if result.boxes is not None:
+    # =====================================================
+    # PROCESS RESULTS
+    # =====================================================
 
-            for box in result.boxes:
+    for result in results:
 
-                try:
+        if result.boxes is None:
+            continue
 
-                    class_id = int(
-                        box.cls[0].item()
-                    )
+        for box in result.boxes:
 
-                    confidence = float(
-                        box.conf[0].item()
-                    )
+            class_id = int(
+                box.cls[0].item()
+            )
 
-                    class_name = yolo_model.names.get(
-                        class_id,
-                        f"class_{class_id}"
-                    )
+            conf = float(
+                box.conf[0].item()
+            )
 
-                    x1, y1, x2, y2 = map(
-                        int,
-                        box.xyxy[0].tolist()
-                    )
+            coordinates = box.xyxy[0].tolist()
 
-                    detections.append({
-                        "class": str(class_name),
-                        "confidence": round(
-                            confidence,
-                            4
-                        ),
-                        "bbox": [
-                            x1,
-                            y1,
-                            x2,
-                            y2
-                        ]
-                    })
+            x1, y1, x2, y2 = map(
+                int,
+                coordinates
+            )
 
-                except Exception as error:
+            # Get class name
+            class_name = model.names[class_id]
 
-                    print(
-                        "YOLO detection error:",
-                        error
-                    )
+            # Store detection
+            detections.append(
+                {
+                    "class": class_name,
+                    "confidence": round(conf, 2),
+                    "box": [x1, y1, x2, y2]
+                }
+            )
 
-        annotated_image = result.plot()
+            # Draw bounding box
+            draw.rectangle(
+                [x1, y1, x2, y2],
+                outline="red",
+                width=4
+            )
 
-    else:
+            # Draw label
+            label = f"{class_name} {conf:.2f}"
 
-        annotated_image = image.copy()
+            draw.text(
+                (x1, max(0, y1 - 20)),
+                label,
+                fill="red"
+            )
 
     return detections, annotated_image
