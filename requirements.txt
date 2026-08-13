@@ -1,6 +1,7 @@
 streamlit
 ultralytics
-transformers
 torch
+transformers
 Pillow
 sentencepiece
+easyocr
