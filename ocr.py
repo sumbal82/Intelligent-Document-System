@@ -1,123 +1,47 @@
-import cv2
-import numpy as np
 import easyocr
-import streamlit as st
+import numpy as np
+from PIL import Image
 
 
-# ============================================================
-# EASYOCR MODEL
-# ============================================================
+print("Loading EasyOCR model...")
 
-@st.cache_resource(show_spinner=False)
-def get_reader():
-    return easyocr.Reader(
-        ["en"],
-        gpu=False,
-        verbose=False
-    )
+# English OCR
+reader = easyocr.Reader(
+    ['en'],
+    gpu=False
+)
 
+print("EasyOCR loaded successfully")
 
-# ============================================================
-# OCR PREPROCESSING
-# ============================================================
-
-def preprocess_for_ocr(image):
-
-    if image is None:
-        raise ValueError("Image is empty.")
-
-    image = np.asarray(image)
-
-    if image.ndim == 2:
-
-        gray = image
-
-    elif image.ndim == 3:
-
-        if image.shape[2] == 4:
-            image = image[:, :, :3]
-
-        gray = cv2.cvtColor(
-            image,
-            cv2.COLOR_BGR2GRAY
-        )
-
-    else:
-
-        raise ValueError(
-            "Invalid image format for OCR."
-        )
-
-    # Noise reduction
-    gray = cv2.fastNlMeansDenoising(
-        gray,
-        None,
-        h=10,
-        templateWindowSize=7,
-        searchWindowSize=21
-    )
-
-    # Contrast enhancement
-    clahe = cv2.createCLAHE(
-        clipLimit=2.0,
-        tileGridSize=(8, 8)
-    )
-
-    enhanced = clahe.apply(gray)
-
-    return enhanced
-
-
-# ============================================================
-# TEXT EXTRACTION
-# ============================================================
 
 def extract_text(image):
+    """
+    Extract text from the complete image using EasyOCR.
+    """
 
-    processed = preprocess_for_ocr(image)
+    # PIL Image -> NumPy array
+    if isinstance(image, Image.Image):
+        image = np.array(image.convert("RGB"))
 
-    # Model loads only when OCR is actually requested
-    reader = get_reader()
-
+    # EasyOCR
     results = reader.readtext(
-        processed,
+        image,
         detail=1,
-        paragraph=False,
-        width_ths=0.7,
-        mag_ratio=1.5
+        paragraph=False
     )
 
-    text_lines = []
+    extracted_lines = []
 
-    for item in results:
+    for result in results:
 
-        if len(item) < 3:
+        if len(result) < 3:
             continue
 
-        try:
+        text = result[1]
+        confidence = result[2]
 
-            detected_text = str(
-                item[1]
-            ).strip()
+        # Ignore extremely low-confidence results
+        if confidence >= 0.25 and text.strip():
+            extracted_lines.append(text.strip())
 
-            confidence = float(
-                item[2]
-            )
-
-            if (
-                detected_text
-                and confidence >= 0.20
-            ):
-
-                text_lines.append(
-                    detected_text
-                )
-
-        except Exception:
-            continue
-
-    text = "\n".join(
-        text_lines
-    )
-
-    return text, results
+    return "\n".join(extracted_lines)
