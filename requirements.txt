@@ -5,4 +5,4 @@ transformers
 Pillow
 sentencepiece
 easyocr
-
+opencv-python-headless
