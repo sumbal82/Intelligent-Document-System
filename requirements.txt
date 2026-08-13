@@ -1,8 +1,8 @@
 streamlit
-ultralytics
-torch
-transformers
-Pillow
-sentencepiece
-easyocr
 opencv-python-headless
+numpy
+Pillow
+easyocr
+ultralytics
+transformers
+sentencepiece
