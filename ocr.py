@@ -1,4 +1,3 @@
-import easyocr
 import numpy as np
 from PIL import Image
 import streamlit as st
@@ -6,6 +5,8 @@ import streamlit as st
 
 @st.cache_resource
 def load_ocr_model():
+    import easyocr
+
     print("Loading EasyOCR model...")
 
     reader = easyocr.Reader(
@@ -15,6 +16,7 @@ def load_ocr_model():
     )
 
     print("EasyOCR loaded successfully")
+
     return reader
 
 
@@ -23,14 +25,12 @@ def extract_text(image):
     Extract text from the complete image using EasyOCR.
     """
 
-    # Load OCR model only when extraction is requested
     reader = load_ocr_model()
 
     # PIL Image -> NumPy array
     if isinstance(image, Image.Image):
         image = np.array(image.convert("RGB"))
 
-    # EasyOCR
     results = reader.readtext(
         image,
         detail=1,
@@ -47,7 +47,6 @@ def extract_text(image):
         text = result[1]
         confidence = result[2]
 
-        # Ignore extremely low-confidence results
         if confidence >= 0.25 and text.strip():
             extracted_lines.append(text.strip())
 
