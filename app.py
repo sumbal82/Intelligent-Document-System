@@ -232,7 +232,10 @@ if uploaded_files:
     for index, uploaded_file in enumerate(uploaded_files):
 
         try:
-            image = Image.open(uploaded_file).convert("RGB")
+
+            image = Image.open(
+                uploaded_file
+            ).convert("RGB")
 
             with columns[index % number_of_columns]:
 
@@ -484,7 +487,6 @@ if (
 
     col1, col2 = st.columns(2)
 
-
     with col1:
 
         st.markdown("#### 🖼️ Original Image")
@@ -493,7 +495,6 @@ if (
             data["image"],
             width="stretch"
         )
-
 
     with col2:
 
