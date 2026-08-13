@@ -1,8 +1,3 @@
-streamlit==1.61.1
-opencv-python-headless==4.11.0.86
-numpy==1.26.4
-Pillow==11.3.0
-easyocr==1.7.2
-ultralytics==8.4.118
-transformers==5.14.1
-sentencepiece
+transformers
+torch
+Pillows
