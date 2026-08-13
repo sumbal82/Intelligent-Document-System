@@ -67,7 +67,7 @@ def answer_image_question(image, question):
 
         generated_ids = model.generate(
             **inputs,
-            max_new_tokens=80
+            max_new_tokens=30
         )
 
     answer = processor.batch_decode(
