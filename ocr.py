@@ -1,23 +1,30 @@
 import easyocr
 import numpy as np
 from PIL import Image
+import streamlit as st
 
 
-print("Loading EasyOCR model...")
+@st.cache_resource
+def load_ocr_model():
+    print("Loading EasyOCR model...")
 
-# English OCR
-reader = easyocr.Reader(
-    ['en'],
-    gpu=False
-)
+    reader = easyocr.Reader(
+        ['en'],
+        gpu=False,
+        verbose=True
+    )
 
-print("EasyOCR loaded successfully")
+    print("EasyOCR loaded successfully")
+    return reader
 
 
 def extract_text(image):
     """
     Extract text from the complete image using EasyOCR.
     """
+
+    # Load OCR model only when extraction is requested
+    reader = load_ocr_model()
 
     # PIL Image -> NumPy array
     if isinstance(image, Image.Image):
