@@ -4,4 +4,6 @@ torch
 transformers
 Pillow
 sentencepiece
-easyocr
+easyocr==1.7.2
+opencv-python-headless==4.10.0.84
+numpy==1.26.4
